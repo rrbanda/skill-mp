@@ -1,0 +1,68 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info:
+  title: Example API
+  version: 0.1.0
+  description: |
+    Replace with service description, ownership, and change policy.
+servers:
+  - url: https://api.example.com/v1
+    description: Production
+tags:
+  - name: Example
+    description: Example resource group
+paths:
+  /health:
+    get:
+      tags: [Example]
+      summary: Liveness probe
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    Problem:
+      type: object
+      additionalProperties: true
+      description: RFC 7807-style problem details (adapt fields to your standard)
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+# security:
+#   - bearerAuth: []

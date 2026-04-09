@@ -1,0 +1,58 @@
+{
+  "name": "skills-marketplace",
+  "owner": {
+    "name": "Skills Marketplace",
+    "email": "hello@skills-marketplace.dev"
+  },
+  "metadata": {
+    "description": "Open-source AI agent skills for developers — portable, validated, cross-platform",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "docs",
+      "source": "./docs",
+      "description": "Documentation quality, linting, and review skills",
+      "version": "1.0.0",
+      "tags": ["documentation", "markdown", "code-review", "quality"],
+      "icon": "file-text",
+      "color": "#3b82f6"
+    },
+    {
+      "name": "devops",
+      "source": "./devops",
+      "description": "Container, Kubernetes, and infrastructure validation skills",
+      "version": "1.0.0",
+      "tags": ["docker", "kubernetes", "infrastructure", "security", "devops"],
+      "icon": "container",
+      "color": "#10b981"
+    },
+    {
+      "name": "api",
+      "source": "./api",
+      "description": "API design, documentation generation, and testing skills",
+      "version": "1.0.0",
+      "tags": ["api", "openapi", "rest", "testing"],
+      "icon": "globe",
+      "color": "#8b5cf6"
+    },
+    {
+      "name": "testing",
+      "source": "./testing",
+      "description": "Test generation and quality assurance skills",
+      "version": "1.0.0",
+      "tags": ["testing", "jest", "pytest", "vitest", "tdd"],
+      "icon": "test-tube",
+      "color": "#f59e0b"
+    },
+    {
+      "name": "security",
+      "source": "./security",
+      "description": "Security auditing and vulnerability detection skills",
+      "version": "1.0.0",
+      "tags": ["security", "audit", "vulnerabilities", "dependencies"],
+      "icon": "shield",
+      "color": "#ef4444"
+    }
+  ]
+}
