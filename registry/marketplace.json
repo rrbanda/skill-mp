@@ -184,19 +184,6 @@
       ],
       "icon": "package",
       "color": "#00a4ef"
-    },
-    {
-      "name": "microsoft-foundry",
-      "source": "./microsoft-foundry",
-      "description": "Microsoft AI Foundry and ML skills",
-      "version": "1.0.0",
-      "tags": [
-        "ai",
-        "ml",
-        "foundry"
-      ],
-      "icon": "brain",
-      "color": "#7c3aed"
     }
   ]
 }

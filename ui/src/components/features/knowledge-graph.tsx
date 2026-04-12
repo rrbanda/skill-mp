@@ -266,8 +266,32 @@ export function KnowledgeGraph({
         </button>
       </div>
 
+      {/* Relationship legend */}
+      {data.schema.relationshipTypes.length > 0 && (
+        <div className="absolute left-0 right-0 top-11 z-10 flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-3 py-1.5 backdrop-blur-sm">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">Edges</span>
+          {data.schema.relationshipTypes.map(({ type, count }) => {
+            const colors: Record<string, string> = {
+              CROSS_LANGUAGE: "#f59e0b",
+              USES_AUTH: "#ef4444",
+              SAME_DOMAIN: "#8b5cf6",
+              COMPLEMENTS: "#10b981",
+              RELATES_TO: "#475569",
+            };
+            const c = colors[type] ?? "#475569";
+            return (
+              <span key={type} className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
+                <span className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: c }} />
+                {type.replace(/_/g, " ").toLowerCase()}
+                <span className="opacity-50">({count})</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* NVL Canvas */}
-      <div className="absolute inset-0 top-11">
+      <div className={`absolute inset-0 ${data.schema.relationshipTypes.length > 0 ? "top-[5.5rem]" : "top-11"}`}>
         {nodes.length > 0 ? (
           <NvlWrapper
             ref={nvlRef}

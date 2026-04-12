@@ -1,6 +1,12 @@
 /**
  * Sync script: reads all SKILL.md files from the registry directory
- * and upserts them into Neo4j as Skill nodes and RELATES_TO edges.
+ * and upserts them into Neo4j as Skill nodes with typed relationships.
+ *
+ * Relationship types:
+ *   CROSS_LANGUAGE  – same service, different language SDK
+ *   USES_AUTH       – SDK skill depends on azure-identity for authentication
+ *   SAME_DOMAIN     – skills belong to the same Azure service domain
+ *   COMPLEMENTS     – explicit "Related Skills" from SKILL.md body
  *
  * Usage: npx tsx scripts/sync-neo4j.ts [--registry <path>]
  */
@@ -21,6 +27,71 @@ const PLUGIN_COLORS: Record<string, string> = {
   api: "#8b5cf6",
   testing: "#f59e0b",
   security: "#ef4444",
+  "azure-sdk-dotnet": "#512bd4",
+  "azure-sdk-java": "#f89820",
+  "azure-sdk-python": "#3776ab",
+  "azure-sdk-rust": "#dea584",
+  "azure-sdk-typescript": "#3178c6",
+  "azure-skills": "#0078d4",
+  "deep-wiki": "#10b981",
+  microsoft: "#00a4ef",
+};
+
+const LANG_SUFFIXES = ["-py", "-dotnet", "-java", "-ts", "-rust"];
+
+const SERVICE_DOMAINS: Record<string, string[]> = {
+  "identity-auth": [
+    "azure-identity", "azure-keyvault", "azure-keyvault-keys",
+    "azure-keyvault-secrets", "azure-keyvault-certificates",
+    "azure-security-keyvault-keys", "azure-security-keyvault-secrets",
+  ],
+  "ai-agents": [
+    "agent-framework-azure-ai", "agents-v2", "azure-ai-agents-persistent",
+    "hosted-agents-v2", "m365-agents",
+  ],
+  "ai-foundry": [
+    "azure-ai-projects", "azure-ai-openai", "azure-ai-ml",
+  ],
+  "ai-language": [
+    "azure-ai-textanalytics", "azure-ai-language-conversations",
+    "azure-ai-transcription", "azure-ai-translation",
+    "azure-ai-translation-document", "azure-ai-translation-text",
+    "azure-speech-to-text-rest",
+  ],
+  "ai-vision": [
+    "azure-ai-vision-imageanalysis", "azure-ai-document-intelligence",
+    "azure-ai-formrecognizer", "azure-ai-contentunderstanding",
+  ],
+  "ai-safety": ["azure-ai-contentsafety"],
+  "ai-realtime": ["azure-ai-voicelive"],
+  "data-cosmos": [
+    "azure-cosmos", "azure-cosmos-db", "azure-resource-manager-cosmosdb",
+  ],
+  "data-sql": [
+    "azure-resource-manager-sql", "azure-resource-manager-mysql",
+    "azure-resource-manager-postgresql", "azure-postgres",
+  ],
+  "data-storage": [
+    "azure-storage-blob", "azure-storage-file-datalake",
+    "azure-storage-file-share", "azure-storage-queue",
+    "azure-data-tables", "azure-containerregistry",
+  ],
+  "data-search": ["azure-search-documents"],
+  messaging: [
+    "azure-servicebus", "azure-eventgrid", "azure-eventhub",
+    "azure-messaging-webpubsub", "azure-messaging-webpubsubservice",
+    "azure-web-pubsub",
+  ],
+  monitoring: [
+    "azure-monitor-ingestion", "azure-monitor-opentelemetry",
+    "azure-monitor-opentelemetry-exporter", "azure-monitor-query",
+    "azure-mgmt-applicationinsights",
+  ],
+  communication: [
+    "azure-communication-callautomation", "azure-communication-callingserver",
+    "azure-communication-chat", "azure-communication-common",
+    "azure-communication-sms",
+  ],
 };
 
 interface SkillRecord {
@@ -34,12 +105,117 @@ interface SkillRecord {
   workflowSteps: number;
   assetCount: number;
   rawContent: string;
+  coreService: string;
+  lang: string;
+  domain: string;
 }
 
-interface EdgeRecord {
+interface TypedEdge {
   sourceId: string;
   targetId: string;
+  type: string;
   description: string;
+}
+
+function stripLangSuffix(entry: string): string {
+  for (const s of LANG_SUFFIXES) {
+    if (entry.endsWith(s)) return entry.slice(0, -s.length);
+  }
+  return entry;
+}
+
+function getLang(entry: string): string {
+  for (const s of LANG_SUFFIXES) {
+    if (entry.endsWith(s)) return s.slice(1);
+  }
+  return "";
+}
+
+function getDomain(coreService: string): string {
+  for (const [domain, services] of Object.entries(SERVICE_DOMAINS)) {
+    if (services.includes(coreService)) return domain;
+  }
+  return "";
+}
+
+function inferEdges(skills: SkillRecord[]): TypedEdge[] {
+  const edges: TypedEdge[] = [];
+  const seen = new Set<string>();
+
+  const addEdge = (src: string, tgt: string, type: string, desc: string) => {
+    const key = `${src}|${tgt}|${type}`;
+    const reverseKey = `${tgt}|${src}|${type}`;
+    if (src === tgt || seen.has(key) || seen.has(reverseKey)) return;
+    seen.add(key);
+    edges.push({ sourceId: src, targetId: tgt, type, description: desc });
+  };
+
+  const byCore = new Map<string, SkillRecord[]>();
+  const byDomain = new Map<string, SkillRecord[]>();
+  const identityByPlugin = new Map<string, SkillRecord>();
+
+  for (const s of skills) {
+    if (!byCore.has(s.coreService)) byCore.set(s.coreService, []);
+    byCore.get(s.coreService)!.push(s);
+
+    if (s.domain) {
+      if (!byDomain.has(s.domain)) byDomain.set(s.domain, []);
+      byDomain.get(s.domain)!.push(s);
+    }
+
+    if (s.coreService === "azure-identity") {
+      identityByPlugin.set(s.plugin, s);
+    }
+  }
+
+  // 1. CROSS_LANGUAGE: same core service across different azure-sdk-* plugins
+  for (const [, group] of byCore) {
+    const sdkSkills = group.filter((s) => s.plugin.startsWith("azure-sdk-"));
+    for (let i = 0; i < sdkSkills.length; i++) {
+      for (let j = i + 1; j < sdkSkills.length; j++) {
+        if (sdkSkills[i]!.plugin !== sdkSkills[j]!.plugin) {
+          addEdge(
+            sdkSkills[i]!.id,
+            sdkSkills[j]!.id,
+            "CROSS_LANGUAGE",
+            `Same service in ${sdkSkills[i]!.lang} and ${sdkSkills[j]!.lang}`
+          );
+        }
+      }
+    }
+  }
+
+  // 2. USES_AUTH: every azure-sdk-* skill → azure-identity in its own plugin
+  for (const s of skills) {
+    if (!s.plugin.startsWith("azure-sdk-") || s.coreService === "azure-identity") continue;
+    const identity = identityByPlugin.get(s.plugin);
+    if (identity) {
+      addEdge(s.id, identity.id, "USES_AUTH", "Requires authentication");
+    }
+  }
+
+  // 3. SAME_DOMAIN: skills in the same domain and same plugin
+  for (const [, group] of byDomain) {
+    const byPlugin = new Map<string, SkillRecord[]>();
+    for (const s of group) {
+      if (!byPlugin.has(s.plugin)) byPlugin.set(s.plugin, []);
+      byPlugin.get(s.plugin)!.push(s);
+    }
+    for (const [, pluginGroup] of byPlugin) {
+      for (let i = 0; i < pluginGroup.length; i++) {
+        for (let j = i + 1; j < pluginGroup.length; j++) {
+          addEdge(
+            pluginGroup[i]!.id,
+            pluginGroup[j]!.id,
+            "SAME_DOMAIN",
+            getDomain(pluginGroup[i]!.coreService)
+          );
+        }
+      }
+    }
+  }
+
+  return edges;
 }
 
 async function main() {
@@ -53,9 +229,12 @@ async function main() {
   console.log(`Neo4j: ${NEO4J_URI}`);
 
   const marketplace = await readMarketplace(registryDir);
-  const { skills, edges } = await scanRegistry(registryDir, marketplace.plugins);
+  const { skills, complementEdges } = await scanRegistry(registryDir, marketplace.plugins);
+  const inferredEdges = inferEdges(skills);
+  const allEdges = [...complementEdges, ...inferredEdges];
 
-  console.log(`Found ${skills.length} skills, ${edges.length} directed edges`);
+  console.log(`Found ${skills.length} skills`);
+  console.log(`Edges: ${complementEdges.length} COMPLEMENTS + ${inferredEdges.length} inferred`);
 
   const driver = neo4j.driver(NEO4J_URI, neo4j.auth.basic(NEO4J_USER, NEO4J_PASSWORD));
   const session = driver.session({ database: NEO4J_DATABASE });
@@ -63,7 +242,7 @@ async function main() {
   try {
     await createConstraintsAndIndexes(session);
     await upsertSkills(session, skills);
-    await upsertEdges(session, edges, skills);
+    await upsertEdges(session, allEdges, skills);
     await cleanStale(session, skills);
     await printStats(session);
     console.log("Sync complete.");
@@ -86,35 +265,41 @@ async function createConstraintsAndIndexes(session: neo4j.Session) {
       CREATE FULLTEXT INDEX skill_search IF NOT EXISTS
       FOR (s:Skill) ON EACH [s.label, s.description, s.plugin]
     `);
-  } catch (e) {
-    console.log("Fulltext index may already exist, skipping.");
+  } catch {
+    // index already exists
   }
 }
 
 async function upsertSkills(session: neo4j.Session, skills: SkillRecord[]) {
   console.log(`Upserting ${skills.length} skill nodes...`);
 
-  await session.run(
-    `
-    UNWIND $skills AS skill
-    MERGE (s:Skill {id: skill.id})
-    SET s.label = skill.label,
-        s.plugin = skill.plugin,
-        s.pluginColor = skill.pluginColor,
-        s.description = skill.description,
-        s.version = skill.version,
-        s.complexity = skill.complexity,
-        s.workflowSteps = skill.workflowSteps,
-        s.assetCount = skill.assetCount,
-        s.updatedAt = datetime()
-    `,
-    { skills }
-  );
+  for (let i = 0; i < skills.length; i += 50) {
+    const batch = skills.slice(i, i + 50);
+    await session.run(
+      `
+      UNWIND $skills AS skill
+      MERGE (s:Skill {id: skill.id})
+      SET s.label = skill.label,
+          s.plugin = skill.plugin,
+          s.pluginColor = skill.pluginColor,
+          s.description = skill.description,
+          s.version = skill.version,
+          s.complexity = skill.complexity,
+          s.workflowSteps = skill.workflowSteps,
+          s.assetCount = skill.assetCount,
+          s.coreService = skill.coreService,
+          s.lang = skill.lang,
+          s.domain = skill.domain,
+          s.updatedAt = datetime()
+      `,
+      { skills: batch }
+    );
+  }
 }
 
 async function upsertEdges(
   session: neo4j.Session,
-  edges: EdgeRecord[],
+  edges: TypedEdge[],
   skills: SkillRecord[]
 ) {
   const validIds = new Set(skills.map((s) => s.id));
@@ -122,26 +307,43 @@ async function upsertEdges(
     (e) => validIds.has(e.sourceId) && validIds.has(e.targetId)
   );
 
-  console.log(`Upserting ${validEdges.length} edges (${edges.length - validEdges.length} skipped as dangling)...`);
+  const byType = new Map<string, TypedEdge[]>();
+  for (const e of validEdges) {
+    if (!byType.has(e.type)) byType.set(e.type, []);
+    byType.get(e.type)!.push(e);
+  }
 
-  // Clear existing edges and recreate
-  await session.run(`MATCH ()-[r:RELATES_TO]->() DELETE r`);
+  // Clear all typed edges
+  for (const type of ["COMPLEMENTS", "CROSS_LANGUAGE", "USES_AUTH", "SAME_DOMAIN", "RELATES_TO"]) {
+    await session.run(`MATCH ()-[r:${type}]->() DELETE r`);
+  }
 
-  if (validEdges.length === 0) return;
+  for (const [type, typeEdges] of byType) {
+    console.log(`  Creating ${typeEdges.length} ${type} edges...`);
+    for (let i = 0; i < typeEdges.length; i += 100) {
+      const batch = typeEdges.slice(i, i + 100);
+      await session.run(
+        `
+        UNWIND $edges AS edge
+        MATCH (a:Skill {id: edge.sourceId})
+        MATCH (b:Skill {id: edge.targetId})
+        CALL {
+          WITH a, b, edge
+          CREATE (a)-[:${type} {
+            description: edge.description,
+            createdAt: datetime()
+          }]->(b)
+        }
+        `,
+        { edges: batch }
+      );
+    }
+  }
 
-  await session.run(
-    `
-    UNWIND $edges AS edge
-    MATCH (a:Skill {id: edge.sourceId})
-    MATCH (b:Skill {id: edge.targetId})
-    CREATE (a)-[:RELATES_TO {
-      description: edge.description,
-      id: 'e-' + edge.sourceId + '-' + edge.targetId,
-      createdAt: datetime()
-    }]->(b)
-    `,
-    { edges: validEdges }
-  );
+  const skipped = edges.length - validEdges.length;
+  if (skipped > 0) {
+    console.log(`  Skipped ${skipped} dangling edges`);
+  }
 }
 
 async function cleanStale(session: neo4j.Session, skills: SkillRecord[]) {
@@ -163,17 +365,33 @@ async function cleanStale(session: neo4j.Session, skills: SkillRecord[]) {
 
 async function printStats(session: neo4j.Session) {
   const nodesResult = await session.run(`MATCH (s:Skill) RETURN count(s) AS count`);
-  const edgesResult = await session.run(`MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS count`);
+  const nodeCount = toNumber(nodesResult.records[0]?.get("count"));
+
+  const relTypes = await session.run(
+    `MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS count ORDER BY type`
+  );
+
+  let totalEdges = 0;
+  console.log(`\nNeo4j Stats:`);
+  console.log(`  Nodes: ${nodeCount}`);
+  console.log(`  Edges by type:`);
+  for (const r of relTypes.records) {
+    const c = toNumber(r.get("count"));
+    totalEdges += c;
+    console.log(`    ${r.get("type")}: ${c}`);
+  }
+  console.log(`  Total edges: ${totalEdges}`);
+
+  const isolatedResult = await session.run(`
+    MATCH (s:Skill)
+    WHERE NOT (s)-[]-()
+    RETURN count(s) AS count
+  `);
+  console.log(`  Isolated nodes: ${toNumber(isolatedResult.records[0]?.get("count"))}`);
+
   const pluginsResult = await session.run(
     `MATCH (s:Skill) RETURN s.plugin AS plugin, count(s) AS count ORDER BY plugin`
   );
-
-  const nodeCount = toNumber(nodesResult.records[0]?.get("count"));
-  const edgeCount = toNumber(edgesResult.records[0]?.get("count"));
-
-  console.log(`\nNeo4j Stats:`);
-  console.log(`  Nodes: ${nodeCount}`);
-  console.log(`  Edges: ${edgeCount}`);
   console.log(`  Plugins:`);
   for (const r of pluginsResult.records) {
     console.log(`    ${r.get("plugin")}: ${toNumber(r.get("count"))} skills`);
@@ -204,9 +422,9 @@ async function readMarketplace(registryDir: string): Promise<MarketplaceConfig> 
 async function scanRegistry(
   registryDir: string,
   plugins: MarketplaceConfig["plugins"]
-): Promise<{ skills: SkillRecord[]; edges: EdgeRecord[] }> {
+): Promise<{ skills: SkillRecord[]; complementEdges: TypedEdge[] }> {
   const skills: SkillRecord[] = [];
-  const edges: EdgeRecord[] = [];
+  const complementEdges: TypedEdge[] = [];
 
   for (const plugin of plugins) {
     const pluginDir = path.join(registryDir, plugin.source.replace("./", ""));
@@ -225,6 +443,9 @@ async function scanRegistry(
         const workflowSteps = countWorkflowSteps(body);
         const assetCount = await countAssets(skillDir);
         const relatedSkills = extractRelatedSkills(body);
+        const coreService = stripLangSuffix(entry);
+        const lang = getLang(entry);
+        const domain = getDomain(coreService);
 
         const id = `${plugin.name}-${entry}`;
         const label = humanize(frontmatter.name || `${plugin.name}:${entry}`);
@@ -240,12 +461,16 @@ async function scanRegistry(
           workflowSteps,
           assetCount,
           rawContent,
+          coreService,
+          lang,
+          domain,
         });
 
         for (const rel of relatedSkills) {
-          edges.push({
+          complementEdges.push({
             sourceId: id,
             targetId: rel.slug,
+            type: "COMPLEMENTS",
             description: rel.description,
           });
         }
@@ -255,7 +480,7 @@ async function scanRegistry(
     }
   }
 
-  return { skills, edges };
+  return { skills, complementEdges };
 }
 
 function parseDualFrontmatter(content: string) {

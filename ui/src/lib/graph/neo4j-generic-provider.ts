@@ -1,6 +1,18 @@
 import neo4j, { type Driver, type QueryResult, type Record as Neo4jRecord } from "neo4j-driver";
 import { getSiteConfig } from "@/lib/site-config";
 
+const REL_COLORS: Record<string, string> = {
+  CROSS_LANGUAGE: "#f59e0b",
+  USES_AUTH: "#ef4444",
+  SAME_DOMAIN: "#8b5cf6",
+  COMPLEMENTS: "#10b981",
+  RELATES_TO: "#475569",
+};
+
+function relColor(type: string): string {
+  return REL_COLORS[type] ?? "#475569";
+}
+
 let driver: Driver | null = null;
 
 function getDriver(): Driver {
@@ -183,7 +195,7 @@ export async function fetchFullGraph(limit?: number): Promise<NvlGraphData> {
         from: fromId,
         to: toId,
         caption: rType,
-        color: "#475569",
+        color: relColor(rType),
         type: rType,
         properties: serializeProps(rProps),
       });
@@ -264,13 +276,14 @@ export async function fetchNeighborhood(
         if (seenRelIds.has(relId)) continue;
         seenRelIds.add(relId);
 
+        const rType = r.type as string;
         relationships.push({
           id: relId,
           from: fromId,
           to: toId,
-          caption: r.type as string,
-          color: "#475569",
-          type: r.type as string,
+          caption: rType,
+          color: relColor(rType),
+          type: rType,
           properties: serializeProps(r.properties as Record<string, unknown>),
         });
       }
