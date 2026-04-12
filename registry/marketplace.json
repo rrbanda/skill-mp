@@ -5,7 +5,7 @@
     "email": "hello@skills-marketplace.dev"
   },
   "metadata": {
-    "description": "Open-source AI agent skills for developers — portable, validated, cross-platform",
+    "description": "Open-source AI agent skills for developers \u2014 portable, validated, cross-platform",
     "version": "1.0.0"
   },
   "plugins": [
@@ -14,7 +14,12 @@
       "source": "./docs",
       "description": "Documentation quality, linting, and review skills",
       "version": "1.0.0",
-      "tags": ["documentation", "markdown", "code-review", "quality"],
+      "tags": [
+        "documentation",
+        "markdown",
+        "code-review",
+        "quality"
+      ],
       "icon": "file-text",
       "color": "#3b82f6"
     },
@@ -23,7 +28,13 @@
       "source": "./devops",
       "description": "Container, Kubernetes, and infrastructure validation skills",
       "version": "1.0.0",
-      "tags": ["docker", "kubernetes", "infrastructure", "security", "devops"],
+      "tags": [
+        "docker",
+        "kubernetes",
+        "infrastructure",
+        "security",
+        "devops"
+      ],
       "icon": "container",
       "color": "#10b981"
     },
@@ -32,7 +43,12 @@
       "source": "./api",
       "description": "API design, documentation generation, and testing skills",
       "version": "1.0.0",
-      "tags": ["api", "openapi", "rest", "testing"],
+      "tags": [
+        "api",
+        "openapi",
+        "rest",
+        "testing"
+      ],
       "icon": "globe",
       "color": "#8b5cf6"
     },
@@ -41,7 +57,13 @@
       "source": "./testing",
       "description": "Test generation and quality assurance skills",
       "version": "1.0.0",
-      "tags": ["testing", "jest", "pytest", "vitest", "tdd"],
+      "tags": [
+        "testing",
+        "jest",
+        "pytest",
+        "vitest",
+        "tdd"
+      ],
       "icon": "test-tube",
       "color": "#f59e0b"
     },
@@ -50,9 +72,131 @@
       "source": "./security",
       "description": "Security auditing and vulnerability detection skills",
       "version": "1.0.0",
-      "tags": ["security", "audit", "vulnerabilities", "dependencies"],
+      "tags": [
+        "security",
+        "audit",
+        "vulnerabilities",
+        "dependencies"
+      ],
       "icon": "shield",
       "color": "#ef4444"
+    },
+    {
+      "name": "azure-sdk-dotnet",
+      "source": "./azure-sdk-dotnet",
+      "description": "Azure SDK skills for .NET developers",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "dotnet",
+        "sdk"
+      ],
+      "icon": "cloud",
+      "color": "#512bd4"
+    },
+    {
+      "name": "azure-sdk-java",
+      "source": "./azure-sdk-java",
+      "description": "Azure SDK skills for Java developers",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "java",
+        "sdk"
+      ],
+      "icon": "cloud",
+      "color": "#f89820"
+    },
+    {
+      "name": "azure-sdk-python",
+      "source": "./azure-sdk-python",
+      "description": "Azure SDK skills for Python developers",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "python",
+        "sdk"
+      ],
+      "icon": "cloud",
+      "color": "#3776ab"
+    },
+    {
+      "name": "azure-sdk-rust",
+      "source": "./azure-sdk-rust",
+      "description": "Azure SDK skills for Rust developers",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "rust",
+        "sdk"
+      ],
+      "icon": "cloud",
+      "color": "#dea584"
+    },
+    {
+      "name": "azure-sdk-typescript",
+      "source": "./azure-sdk-typescript",
+      "description": "Azure SDK skills for TypeScript developers",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "typescript",
+        "sdk"
+      ],
+      "icon": "cloud",
+      "color": "#3178c6"
+    },
+    {
+      "name": "azure-skills",
+      "source": "./azure-skills",
+      "description": "General Azure platform skills",
+      "version": "1.0.0",
+      "tags": [
+        "azure",
+        "cloud",
+        "infrastructure"
+      ],
+      "icon": "cloud",
+      "color": "#0078d4"
+    },
+    {
+      "name": "deep-wiki",
+      "source": "./deep-wiki",
+      "description": "Documentation and wiki generation skills",
+      "version": "1.0.0",
+      "tags": [
+        "documentation",
+        "wiki",
+        "knowledge"
+      ],
+      "icon": "book-open",
+      "color": "#10b981"
+    },
+    {
+      "name": "microsoft",
+      "source": "./microsoft",
+      "description": "General Microsoft development skills",
+      "version": "1.0.0",
+      "tags": [
+        "microsoft",
+        "development",
+        "tools"
+      ],
+      "icon": "package",
+      "color": "#00a4ef"
+    },
+    {
+      "name": "microsoft-foundry",
+      "source": "./microsoft-foundry",
+      "description": "Microsoft AI Foundry and ML skills",
+      "version": "1.0.0",
+      "tags": [
+        "ai",
+        "ml",
+        "foundry"
+      ],
+      "icon": "brain",
+      "color": "#7c3aed"
     }
   ]
 }
