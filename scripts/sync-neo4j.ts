@@ -13,6 +13,7 @@ import matter from "gray-matter";
 const NEO4J_URI = process.env.NEO4J_URI ?? "bolt://localhost:7687";
 const NEO4J_USER = process.env.NEO4J_USER ?? "neo4j";
 const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD ?? "skillsmarketplace";
+const NEO4J_DATABASE = process.env.NEO4J_DATABASE ?? "neo4j";
 
 const PLUGIN_COLORS: Record<string, string> = {
   docs: "#3b82f6",
@@ -57,7 +58,7 @@ async function main() {
   console.log(`Found ${skills.length} skills, ${edges.length} directed edges`);
 
   const driver = neo4j.driver(NEO4J_URI, neo4j.auth.basic(NEO4J_USER, NEO4J_PASSWORD));
-  const session = driver.session({ database: "neo4j" });
+  const session = driver.session({ database: NEO4J_DATABASE });
 
   try {
     await createConstraintsAndIndexes(session);

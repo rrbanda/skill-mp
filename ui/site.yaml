@@ -1,0 +1,81 @@
+# ------------------------------------------------------------------
+# Skills Marketplace — Site Configuration
+#
+# All user-facing copy, branding, URLs, and platform definitions
+# live here. Components read from this file via lib/site-config.ts.
+# ------------------------------------------------------------------
+
+site:
+  name: "Skills Marketplace"
+  title: "Skills Marketplace — AI Agent Skills Platform"
+  titleTemplate: "%s | Skills Marketplace"
+  description: "Discover, build, and install production-grade prompt skills for AI coding agents. Deploy to Cursor, Claude Code, Windsurf, and more."
+  tagline: "Open-source AI agent skills. Portable, validated, cross-platform."
+  license: "Built with the Agent Skills spec. Apache-2.0 Licensed."
+  githubUrl: "https://github.com/rrbanda/skill-mp"
+  cliPackage: "skills-marketplace"
+
+hero:
+  badge: "Open-source AI Agent Skills"
+  headline: "AI Agent Skills,"
+  headlineHighlight: "One Marketplace"
+  description: "Discover, build, and install production-grade prompt skills for AI coding agents. Create with natural language, explore the knowledge graph, and deploy to Cursor, Claude Code, Windsurf, and more."
+
+howItWorks:
+  title: "How It Works"
+  subtitle: "From SKILL.md to every AI agent platform in three steps."
+  steps:
+    - title: "Write"
+      description: "Define your skill as a SKILL.md file with structured metadata, workflow steps, and reference assets."
+      icon: "file-text"
+      color: "var(--color-primary)"
+    - title: "Validate & Publish"
+      description: "Validate against the skill spec, run quality checks, and publish to the marketplace registry."
+      icon: "shield-check"
+      color: "#10b981"
+    - title: "Use Anywhere"
+      description: "One skill definition exports to Cursor, Claude Code, Windsurf, Google ADK, and more."
+      icon: "rocket"
+      color: "#8b5cf6"
+
+featured:
+  title: "Featured Skills"
+  subtitle: "Production-grade skills ready to use on any platform."
+  maxCount: 6
+
+platforms:
+  - id: cursor
+    name: "Cursor"
+    icon: "mouse-pointer"
+  - id: claude-code
+    name: "Claude Code"
+    icon: "terminal"
+  - id: windsurf
+    name: "Windsurf"
+    icon: "wind"
+  - id: adk
+    name: "Google ADK"
+    icon: "brain"
+  - id: openai
+    name: "OpenAI Agents"
+    icon: "sparkles"
+  - id: langchain
+    name: "LangChain"
+    icon: "link"
+  - id: mcp
+    name: "MCP Server"
+    icon: "plug"
+
+platformsBar:
+  label: "Export to any platform"
+
+neo4j:
+  database: "neo4j"
+  syncIntervalMs: 5000
+  maxBodyChars: 3000
+  pluginColors:
+    docs: "#3b82f6"
+    devops: "#10b981"
+    api: "#8b5cf6"
+    testing: "#f59e0b"
+    security: "#ef4444"

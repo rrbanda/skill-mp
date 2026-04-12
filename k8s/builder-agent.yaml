@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: builder-agent
+  namespace: skills-marketplace
+  labels:
+    app: builder-agent
+    app.kubernetes.io/part-of: skills-marketplace
+spec:
+  selector:
+    app: builder-agent
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: builder-agent
+  namespace: skills-marketplace
+  labels:
+    app: builder-agent
+    app.kubernetes.io/part-of: skills-marketplace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: builder-agent
+  template:
+    metadata:
+      labels:
+        app: builder-agent
+    spec:
+      containers:
+        - name: builder-agent
+          image: ghcr.io/rrbanda/skill-mp/agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: skills-marketplace-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"

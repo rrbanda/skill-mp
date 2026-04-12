@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BUILDER_AGENT_URL =
   process.env.BUILDER_AGENT_URL ?? "http://localhost:8001";
+const BUILDER_API_KEY = process.env.BUILDER_API_KEY ?? "";
+
+function upstreamHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (BUILDER_API_KEY) {
+    headers["Authorization"] = `Bearer ${BUILDER_API_KEY}`;
+  }
+  return headers;
+}
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -29,7 +40,7 @@ async function proxyStream(
 ): Promise<Response> {
   const upstream = await fetch(`${BUILDER_AGENT_URL}/${action}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: upstreamHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -57,7 +68,7 @@ async function proxySave(
   try {
     const upstream = await fetch(`${BUILDER_AGENT_URL}/save`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: upstreamHeaders(),
       body: JSON.stringify(body),
     });
 

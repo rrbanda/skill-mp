@@ -26,13 +26,16 @@ from skill_builder.vector_search import SkillVectorSearch
 logger = logging.getLogger(__name__)
 
 APP_NAME = "skill_builder"
-MAX_REFINEMENT_ITERATIONS = 3
 
 KEY_REQUIREMENTS = "requirements_analysis"
 KEY_RESEARCH = "research_report"
 KEY_EXEMPLARS = "exemplar_content"
 KEY_GENERATED_SKILL = "generated_skill"
 KEY_VALIDATION = "validation_result"
+
+STATE_SPEC_GUIDE = "spec_guide"
+STATE_QUALITY_PATTERNS = "quality_patterns"
+STATE_DOMAIN_TEMPLATES = "domain_templates"
 
 
 def _load_skill_content() -> dict[str, str]:
@@ -52,6 +55,21 @@ def _build_model(config: Configuration) -> LiteLlm:
         api_base=config.llm_api_base,
         api_key=config.llm_api_key,
     )
+
+
+def get_initial_state() -> dict[str, str]:
+    """Build the initial session state with reference content.
+
+    These values are injected into agent instructions via ADK's
+    {{template}} mechanism rather than baking them into the prompt
+    string at build time.
+    """
+    skills = _load_skill_content()
+    return {
+        STATE_SPEC_GUIDE: skills.get("skill-spec-guide", ""),
+        STATE_QUALITY_PATTERNS: skills.get("quality-patterns", ""),
+        STATE_DOMAIN_TEMPLATES: skills.get("domain-templates", ""),
+    }
 
 
 def build_pipeline(
@@ -74,10 +92,9 @@ def build_pipeline(
         vector_search = SkillVectorSearch(config)
 
     model = _build_model(config)
-    skills = _load_skill_content()
+    default_top_k = config.vector_search_top_k
 
-    # --- Tool: search_similar_skills ---
-    def search_similar_skills(query: str, top_k: int = 5) -> str:
+    def search_similar_skills(query: str, top_k: int = default_top_k) -> str:
         """Search for existing skills similar to the given description.
 
         Args:
@@ -85,27 +102,34 @@ def build_pipeline(
             top_k: Number of results to return (default 5).
 
         Returns:
-            JSON array of similar skills with id, label, plugin, description, score.
+            JSON object with status and results or error message.
         """
-        results = vector_search.search_with_neighbors(query, top_k=top_k)
-        return json.dumps(
-            [
-                {
-                    "id": r.id,
-                    "label": r.label,
-                    "plugin": r.plugin,
-                    "description": r.description,
-                    "score": round(r.score, 3),
-                    "body_preview": r.body[:500] if r.body else "",
-                }
-                for r in results
-            ],
-            indent=2,
-        )
+        try:
+            results = vector_search.search_with_neighbors(query, top_k=top_k)
+            return json.dumps({
+                "status": "ok",
+                "results": [
+                    {
+                        "id": r.id,
+                        "label": r.label,
+                        "plugin": r.plugin,
+                        "description": r.description,
+                        "score": round(r.score, 3),
+                        "body_preview": r.body[:500] if r.body else "",
+                    }
+                    for r in results
+                ],
+            }, indent=2)
+        except Exception as exc:
+            logger.warning("search_similar_skills failed: %s", exc)
+            return json.dumps({
+                "status": "error",
+                "message": f"Search unavailable: {type(exc).__name__}",
+                "results": [],
+            })
 
     search_tool = FunctionTool(func=search_similar_skills)
 
-    # --- Agent 1: Requirements Analyzer ---
     requirements_analyzer = LlmAgent(
         name="RequirementsAnalyzerAgent",
         model=model,
@@ -114,7 +138,6 @@ def build_pipeline(
         output_key=KEY_REQUIREMENTS,
     )
 
-    # --- Agent 2: Skill Researcher ---
     skill_researcher = LlmAgent(
         name="SkillResearcherAgent",
         model=model,
@@ -124,22 +147,14 @@ def build_pipeline(
         output_key=KEY_RESEARCH,
     )
 
-    # --- Agent 3: Skill Generator ---
-    generator_instruction = instructions.SKILL_GENERATOR_INSTRUCTION.format(
-        spec_guide=skills.get("skill-spec-guide", ""),
-        quality_patterns=skills.get("quality-patterns", ""),
-        domain_templates=skills.get("domain-templates", ""),
-    )
-
     skill_generator = LlmAgent(
         name="SkillGeneratorAgent",
         model=model,
-        instruction=generator_instruction,
+        instruction=instructions.SKILL_GENERATOR_INSTRUCTION,
         description="Generates a complete SKILL.md file from requirements and research.",
         output_key=KEY_GENERATED_SKILL,
     )
 
-    # --- Agent 4: Skill Validator ---
     skill_validator = LlmAgent(
         name="SkillValidatorAgent",
         model=model,
@@ -148,14 +163,14 @@ def build_pipeline(
         output_key=KEY_VALIDATION,
     )
 
-    # --- Compose pipeline ---
+    max_iterations = config.max_refinement_iterations
     refinement_loop = LoopAgent(
         name="SkillRefinementLoop",
         sub_agents=[skill_generator, skill_validator],
-        max_iterations=MAX_REFINEMENT_ITERATIONS,
+        max_iterations=max_iterations,
         description=(
             f"Iteratively generates and validates a SKILL.md file, "
-            f"up to {MAX_REFINEMENT_ITERATIONS} attempts."
+            f"up to {max_iterations} attempts."
         ),
     )
 

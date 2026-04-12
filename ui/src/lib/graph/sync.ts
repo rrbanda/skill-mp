@@ -2,14 +2,7 @@ import neo4j, { type Session } from "neo4j-driver";
 import fs from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
-
-const PLUGIN_COLORS: Record<string, string> = {
-  docs: "#3b82f6",
-  devops: "#10b981",
-  api: "#8b5cf6",
-  testing: "#f59e0b",
-  security: "#ef4444",
-};
+import { getSiteConfig } from "@/lib/site-config";
 
 interface SkillRecord {
   id: string;
@@ -38,13 +31,13 @@ interface SyncResult {
 }
 
 let lastSyncTime = 0;
-const MIN_SYNC_INTERVAL_MS = 5000;
 
 export async function syncRegistryToNeo4j(
   registryDir?: string
 ): Promise<SyncResult> {
+  const neo4jCfg = getSiteConfig().neo4j;
   const now = Date.now();
-  if (now - lastSyncTime < MIN_SYNC_INTERVAL_MS) {
+  if (now - lastSyncTime < neo4jCfg.syncIntervalMs) {
     return { nodes: 0, edges: 0, cleaned: 0, durationMs: 0 };
   }
   lastSyncTime = now;
@@ -65,7 +58,7 @@ export async function syncRegistryToNeo4j(
   }
 
   const driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
-  const session = driver.session({ database: "neo4j" });
+  const session = driver.session({ database: neo4jCfg.database });
 
   try {
     await createConstraintsAndIndexes(session);
@@ -220,17 +213,20 @@ async function scanRegistry(
         const id = `${plugin.name}-${entry}`;
         const label = humanize(frontmatter.name || `${plugin.name}:${entry}`);
 
+        const pluginColors = getSiteConfig().neo4j.pluginColors;
+        const maxBody = getSiteConfig().neo4j.maxBodyChars;
+
         skills.push({
           id,
           label,
           plugin: plugin.name,
-          pluginColor: plugin.color ?? PLUGIN_COLORS[plugin.name] ?? "#6b7280",
+          pluginColor: plugin.color ?? pluginColors[plugin.name] ?? "#6b7280",
           description: frontmatter.description ?? "",
           version: frontmatter.version ?? "1.0.0",
           complexity: getComplexity(lineCount),
           workflowSteps,
           assetCount,
-          body: body.slice(0, 3000),
+          body: body.slice(0, maxBody),
         });
 
         for (const rel of relatedSkills) {

@@ -8,7 +8,6 @@ import {
   Clock,
   Code2,
   Layers,
-  ArrowRightLeft,
   Network,
   Copy,
   Check,
@@ -163,10 +162,13 @@ export function SkillDetailView({
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
               Quick Install
             </h3>
-            {[
-              { id: "cursor", label: "Cursor", cmd: `npx skills-marketplace install ${skill.name} --platform cursor` },
-              { id: "claude", label: "Claude Code", cmd: `npx skills-marketplace install ${skill.name} --platform claude-code` },
-            ].map(({ id, label, cmd }) => (
+            {(() => {
+              const pkg = process.env.NEXT_PUBLIC_CLI_PACKAGE ?? "skills-marketplace";
+              return [
+                { id: "cursor", label: "Cursor", cmd: `npx ${pkg} install ${skill.name} --platform cursor` },
+                { id: "claude", label: "Claude Code", cmd: `npx ${pkg} install ${skill.name} --platform claude-code` },
+              ];
+            })().map(({ id, label, cmd }) => (
               <div key={id} className="mb-2 last:mb-0">
                 <span className="mb-1 block text-xs text-[var(--color-text-muted)]">{label}</span>
                 <div className="flex items-center gap-1 rounded-lg bg-[#0d1117] px-3 py-2">
@@ -213,16 +215,10 @@ export function SkillDetailView({
           {/* Actions */}
           <div className="flex gap-2">
             <Link
-              href={`/compare?a=${skill.slug}`}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface)]"
-            >
-              <ArrowRightLeft className="h-4 w-4" /> Compare
-            </Link>
-            <Link
               href={`/graph?focus=${skill.slug}`}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface)]"
             >
-              <Network className="h-4 w-4" /> Graph
+              <Network className="h-4 w-4" /> View in Graph
             </Link>
           </div>
         </aside>

@@ -62,6 +62,8 @@ export function BuilderWizard() {
         const decoder = new TextDecoder();
         let buffer = "";
 
+        let pendingEventType: string | null = null;
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -71,44 +73,33 @@ export function BuilderWizard() {
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
-            if (line.startsWith("event:")) {
-              const eventType = line.slice(6).trim();
-              const dataLineIdx = lines.indexOf(line) + 1;
-              const dataLine = lines[dataLineIdx];
-              if (dataLine?.startsWith("data:")) {
-                try {
-                  const data = JSON.parse(dataLine.slice(5).trim());
-                  const event = parseSSEEvent(eventType, data);
-                  setEvents((prev) => [...prev, event]);
+            const trimmed = line.trim();
+            if (!trimmed) {
+              pendingEventType = null;
+              continue;
+            }
 
-                  if (event.type === "complete") {
-                    setSkillContent(event.skillContent ?? "");
-                    setValidation(event.validation ?? "");
-                    setStep("review");
-                  }
-                } catch {
-                  // malformed SSE data line
-                }
-              }
-            } else if (line.startsWith("data:")) {
+            if (trimmed.startsWith("event:")) {
+              pendingEventType = trimmed.slice(6).trim();
+              continue;
+            }
+
+            if (trimmed.startsWith("data:")) {
               try {
-                const data = JSON.parse(line.slice(5).trim());
-                if (data.skill_content !== undefined) {
-                  setSkillContent(data.skill_content);
-                  setValidation(data.validation ?? "");
+                const data = JSON.parse(trimmed.slice(5).trim());
+                const eventType = pendingEventType ?? data.type ?? "agent_output";
+                const event = parseSSEEvent(eventType, data);
+                setEvents((prev) => [...prev, event]);
+
+                if (event.type === "complete") {
+                  setSkillContent(event.skillContent ?? "");
+                  setValidation(event.validation ?? "");
                   setStep("review");
-                  setEvents((prev) => [
-                    ...prev,
-                    {
-                      type: "complete",
-                      skillContent: data.skill_content,
-                      validation: data.validation,
-                    },
-                  ]);
                 }
               } catch {
-                // not JSON
+                // malformed data line
               }
+              pendingEventType = null;
             }
           }
         }
@@ -178,9 +169,9 @@ export function BuilderWizard() {
   const currentIdx = steps.findIndex((s) => s.key === step);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" suppressHydrationWarning>
       {/* Step indicator */}
-      <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-6 py-3">
+      <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-6 py-3" suppressHydrationWarning>
         {steps.map((s, i) => (
           <div key={s.key} className="flex items-center gap-2">
             <div

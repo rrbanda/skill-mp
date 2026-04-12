@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   Network,
   Hammer,
-  ArrowRightLeft,
   BookOpen,
 } from "lucide-react";
 
@@ -22,7 +21,6 @@ const navLinks = [
   { href: "/skills", label: "Browse", icon: LayoutGrid },
   { href: "/graph", label: "Graph", icon: Network },
   { href: "/builder", label: "Builder", icon: Hammer },
-  { href: "/compare", label: "Compare", icon: ArrowRightLeft },
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 
@@ -38,7 +36,7 @@ export function Navbar() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2.5 font-bold text-lg tracking-tight">
           <Sparkles className="h-5 w-5 text-[var(--color-primary)]" />
-          <span>Skills Marketplace</span>
+          <span>{process.env.NEXT_PUBLIC_SITE_NAME ?? "Skills Marketplace"}</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -64,7 +62,7 @@ export function Navbar() {
           </button>
 
           <a
-            href="https://github.com"
+            href={process.env.NEXT_PUBLIC_GITHUB_URL ?? "https://github.com/rrbanda/skill-mp"}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-lg p-2 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]"

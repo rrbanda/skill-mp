@@ -14,7 +14,8 @@ export function TerminalInstall({ skill }: TerminalInstallProps) {
   const [copied, setCopied] = useState(false);
   const termRef = useRef<HTMLDivElement>(null);
 
-  const installCmd = `npx skills-marketplace install ${skill.name} --platform cursor`;
+  const cliPkg = process.env.NEXT_PUBLIC_CLI_PACKAGE ?? "skills-marketplace";
+  const installCmd = `npx ${cliPkg} install ${skill.name} --platform cursor`;
 
   const script = [
     { text: `$ ${installCmd}`, type: "cmd" as const, delay: 0 },

@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Network, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
-export function HeroSection() {
+interface HeroSectionProps {
+  hero: {
+    badge: string;
+    headline: string;
+    headlineHighlight: string;
+    description: string;
+  };
+}
+
+export function HeroSection({ hero }: HeroSectionProps) {
   return (
     <section className="relative overflow-hidden">
       <div className="absolute inset-0 -z-10">
@@ -20,17 +29,16 @@ export function HeroSection() {
         >
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-xs text-[var(--color-text-secondary)]">
             <Sparkles className="h-3.5 w-3.5 text-[var(--color-primary)]" />
-            Open-source AI Agent Skills
+            {hero.badge}
           </div>
 
           <h1 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-            AI Agent Skills,{" "}
-            <span className="gradient-text">One Marketplace</span>
+            {hero.headline}{" "}
+            <span className="gradient-text">{hero.headlineHighlight}</span>
           </h1>
 
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-text-secondary)] sm:text-base">
-            Discover, explore, and install production-grade skills for any AI agent platform.
-            Write once as SKILL.md, deploy to Augment, Google ADK, OpenAI, LangChain, Cursor, and more.
+            {hero.description}
           </p>
         </motion.div>
 
@@ -46,6 +54,13 @@ export function HeroSection() {
           >
             Browse Skills
             <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/graph"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-2.5 text-sm font-medium text-[var(--color-text-primary)] transition-all hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-surface-hover)]"
+          >
+            <Network className="h-4 w-4" />
+            Explore Graph
           </Link>
           <Link
             href="/builder"

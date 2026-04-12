@@ -16,10 +16,6 @@ from skill_builder.configuration import Configuration
 
 logger = logging.getLogger(__name__)
 
-VECTOR_INDEX_NAME = "skill_embedding_idx"
-VECTOR_DIMENSIONS = 384  # all-MiniLM-L6-v2 output dimensions
-SIMILARITY_FUNCTION = "cosine"
-
 
 @dataclass(frozen=True)
 class SimilarSkill:
@@ -41,6 +37,11 @@ class SkillVectorSearch:
             config.neo4j_uri,
             auth=(config.neo4j_user, config.neo4j_password),
         )
+        self._database = config.neo4j_database
+        self._index_name = config.vector_index_name
+        self._dimensions = config.vector_dimensions
+        self._similarity = config.vector_similarity
+        self._embedding_max_chars = config.embedding_max_chars
         self._model = SentenceTransformer(config.embedding_model)
         self._ensure_vector_index()
 
@@ -49,21 +50,21 @@ class SkillVectorSearch:
 
     def _ensure_vector_index(self) -> None:
         """Create the vector index on Skill.embedding if it doesn't exist."""
-        with self._driver.session(database="neo4j") as session:
+        with self._driver.session(database=self._database) as session:
             try:
                 session.run(
                     f"""
-                    CREATE VECTOR INDEX {VECTOR_INDEX_NAME} IF NOT EXISTS
+                    CREATE VECTOR INDEX {self._index_name} IF NOT EXISTS
                     FOR (s:Skill) ON (s.embedding)
                     OPTIONS {{
                         indexConfig: {{
-                            `vector.dimensions`: {VECTOR_DIMENSIONS},
-                            `vector.similarity_function`: '{SIMILARITY_FUNCTION}'
+                            `vector.dimensions`: {self._dimensions},
+                            `vector.similarity_function`: '{self._similarity}'
                         }}
                     }}
                     """
                 )
-                logger.info("Vector index '%s' ensured", VECTOR_INDEX_NAME)
+                logger.info("Vector index '%s' ensured", self._index_name)
             except Exception as exc:
                 logger.warning("Could not create vector index: %s", exc)
 
@@ -76,7 +77,7 @@ class SkillVectorSearch:
 
         Returns the number of skills updated.
         """
-        with self._driver.session(database="neo4j") as session:
+        with self._driver.session(database=self._database) as session:
             result = session.run(
                 """
                 MATCH (s:Skill)
@@ -100,7 +101,7 @@ class SkillVectorSearch:
             )
             embedding = self.embed_text(text)
 
-            with self._driver.session(database="neo4j") as session:
+            with self._driver.session(database=self._database) as session:
                 session.run(
                     "MATCH (s:Skill {id: $id}) SET s.embedding = $embedding",
                     {"id": record["id"], "embedding": embedding},
@@ -110,21 +111,52 @@ class SkillVectorSearch:
         logger.info("Embedded %d skills", count)
         return count
 
-    def embed_skill(self, skill_id: str, label: str, description: str, body: str) -> None:
+    def embed_skill(
+        self,
+        skill_id: str,
+        label: str,
+        description: str,
+        body: str,
+        plugin: str = "",
+    ) -> bool:
         """Generate and store an embedding for a single skill node.
 
-        Called immediately after a new skill is synced to Neo4j so it's
-        available for vector search without waiting for a full re-embed pass.
+        Uses MERGE to create the node if it doesn't exist yet (the sync
+        pipeline may not have run), ensuring the embedding is always persisted.
+
+        Returns True if a node was created or updated, False otherwise.
         """
         text = self._build_embedding_text(label=label, description=description, body=body)
         embedding = self.embed_text(text)
 
-        with self._driver.session(database="neo4j") as session:
-            session.run(
-                "MATCH (s:Skill {id: $id}) SET s.embedding = $embedding",
-                {"id": skill_id, "embedding": embedding},
+        with self._driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MERGE (s:Skill {id: $id})
+                ON CREATE SET s.label = $label,
+                              s.description = $description,
+                              s.body = $body,
+                              s.plugin = $plugin,
+                              s.embedding = $embedding
+                ON MATCH SET  s.embedding = $embedding
+                RETURN s.id AS id
+                """,
+                {
+                    "id": skill_id,
+                    "label": label,
+                    "description": description,
+                    "body": body,
+                    "plugin": plugin,
+                    "embedding": embedding,
+                },
             )
-        logger.info("Embedded skill '%s' immediately on save", skill_id)
+            row = result.single()
+
+        if row:
+            logger.info("Embedded skill '%s' immediately on save", skill_id)
+            return True
+        logger.warning("embed_skill produced no result for '%s'", skill_id)
+        return False
 
     def search(self, query: str, top_k: int = 5) -> list[SimilarSkill]:
         """Find the most similar skills to a natural language query.
@@ -134,10 +166,10 @@ class SkillVectorSearch:
         """
         query_embedding = self.embed_text(query)
 
-        with self._driver.session(database="neo4j") as session:
+        with self._driver.session(database=self._database) as session:
             result = session.run(
                 f"""
-                CALL db.index.vector.queryNodes('{VECTOR_INDEX_NAME}', $topK, $queryVector)
+                CALL db.index.vector.queryNodes('{self._index_name}', $topK, $queryVector)
                 YIELD node, score
                 RETURN node.id AS id,
                        node.label AS label,
@@ -167,10 +199,10 @@ class SkillVectorSearch:
         """Vector search + one-hop graph traversal for richer context."""
         query_embedding = self.embed_text(query)
 
-        with self._driver.session(database="neo4j") as session:
+        with self._driver.session(database=self._database) as session:
             result = session.run(
                 f"""
-                CALL db.index.vector.queryNodes('{VECTOR_INDEX_NAME}', $topK, $queryVector)
+                CALL db.index.vector.queryNodes('{self._index_name}', $topK, $queryVector)
                 YIELD node, score
                 WITH node, score
                 OPTIONAL MATCH (node)-[:RELATES_TO]-(neighbor:Skill)
@@ -204,17 +236,17 @@ class SkillVectorSearch:
                 for r in result
             ]
 
-    @staticmethod
     def _build_embedding_text(
-        label: str, description: str, body: str, max_chars: int = 2000
+        self, label: str, description: str, body: str, max_chars: int | None = None
     ) -> str:
         """Build the text to embed from skill components.
 
         Prioritizes name and description (always included), then truncates
         body to fit within the model's effective context.
         """
+        limit = max_chars if max_chars is not None else self._embedding_max_chars
         prefix = f"{label}: {description}"
-        remaining = max_chars - len(prefix)
+        remaining = limit - len(prefix)
         if remaining > 0 and body:
             return f"{prefix}\n{body[:remaining]}"
         return prefix

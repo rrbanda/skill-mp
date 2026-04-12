@@ -1,0 +1,103 @@
+name: Build & Push to GHCR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy to OpenShift after build"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image: ui
+            context: ./ui
+            dockerfile: ./ui/Dockerfile
+          - image: agent
+            context: .
+            dockerfile: ./builder-agent/Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Podman (ensure latest)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq podman
+
+      - name: Log in to GHCR
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image with Buildah
+        id: build
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          tags: latest ${{ github.sha }}
+          context: ${{ matrix.context }}
+          containerfiles: ${{ matrix.dockerfile }}
+
+      - name: Push to GHCR
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build.outputs.image }}
+          tags: ${{ steps.build.outputs.tags }}
+          registry: ${{ env.REGISTRY }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.deploy == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install oc CLI
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: "4"
+
+      - name: Log in to OpenShift
+        run: |
+          oc login --token="${{ secrets.OPENSHIFT_TOKEN }}" \
+                   --server="${{ secrets.OPENSHIFT_SERVER }}" \
+                   --insecure-skip-tls-verify=true
+
+      - name: Apply manifests
+        run: |
+          oc apply -f k8s/namespace.yaml
+          oc project skills-marketplace
+          oc apply -f k8s/configmap.yaml
+          oc apply -f k8s/neo4j.yaml
+          oc apply -f k8s/builder-agent.yaml
+          oc apply -f k8s/ui.yaml
+
+      - name: Rollout restart
+        run: |
+          oc project skills-marketplace
+          oc rollout restart deployment/builder-agent
+          oc rollout restart deployment/ui
+          oc rollout status deployment/builder-agent --timeout=120s
+          oc rollout status deployment/ui --timeout=120s

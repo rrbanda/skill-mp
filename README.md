@@ -16,7 +16,7 @@ skill-mp/
 
 ### Key Components
 
-- **UI** — Next.js 15, Tailwind CSS 4, shadcn/ui patterns. Pages: browse skills, knowledge graph, docs, skill builder, compare (WIP), export (WIP).
+- **UI** — Next.js 15, Tailwind CSS 4, shadcn/ui patterns. Pages: browse skills, knowledge graph, docs, skill builder, export (WIP).
 - **Skill Builder** — AI-powered skill creation from natural language. Uses a Google ADK multi-agent pipeline (RequirementsAnalyzer -> SkillResearcher -> Generator/Validator loop) with Neo4j vector search for exemplar retrieval.
 - **Knowledge Graph** — Neo4j-backed, schema-agnostic. Visualized with [Neo4j NVL](https://neo4j.com/docs/nvl/current/) (`@neo4j-nvl/react`). Also serves as the vector store for skill embeddings.
 - **Registry** — Git-backed skill definitions using the `SKILL.md` format (YAML frontmatter + markdown body). Organized by plugin (docs, devops, api, testing, security).

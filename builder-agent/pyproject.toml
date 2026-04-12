@@ -1,6 +1,6 @@
 [project]
 name = "skill-builder-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "ADK multi-agent pipeline that generates SKILL.md files from natural language, with Neo4j vector-powered exemplar retrieval."
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
@@ -14,10 +14,16 @@ dependencies = [
     "sentence-transformers>=3.0.0",
     "sse-starlette>=2.0.0",
     "pyyaml>=6.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+    "opentelemetry-instrumentation-starlette>=0.41b0",
+    "pydantic>=2.0",
 ]
 
 [project.scripts]
 server = "skill_builder.server:run"
+cli = "skill_builder.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skill_builder"]

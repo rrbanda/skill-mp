@@ -4,7 +4,8 @@ Endpoints:
     POST /generate    — Stream skill generation progress via SSE
     POST /refine      — Re-generate with user feedback
     POST /save        — Write generated SKILL.md to the registry
-    GET  /health      — Health check
+    GET  /health      — Health check (shallow + deep)
+    POST /embed       — Trigger embedding generation for all skills
 """
 
 from __future__ import annotations
@@ -14,10 +15,11 @@ import json
 import logging
 import os
 import pathlib
-from typing import AsyncGenerator
+import re
+import secrets
+import time
 
 import uvicorn
-import yaml
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 from starlette.applications import Starlette
@@ -29,16 +31,29 @@ from starlette.routing import Route
 
 from skill_builder.configuration import Configuration
 from skill_builder.git_publisher import GitPublisher
-from skill_builder.pipeline import APP_NAME, KEY_GENERATED_SKILL, KEY_VALIDATION, get_runner
+from skill_builder.observability import get_tracer, init_tracing
+from skill_builder.pipeline import APP_NAME, KEY_GENERATED_SKILL, KEY_VALIDATION, get_initial_state, get_runner
 from skill_builder.vector_search import SkillVectorSearch
 
 logger = logging.getLogger(__name__)
+
+
+class _SessionEntry:
+    __slots__ = ("session_id", "last_used")
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        self.last_used = time.monotonic()
+
+    def touch(self) -> None:
+        self.last_used = time.monotonic()
+
 
 _config: Configuration | None = None
 _runner = None
 _vector_search: SkillVectorSearch | None = None
 _git_publisher: GitPublisher | None = None
-_sessions: dict[str, str] = {}
+_sessions: dict[str, _SessionEntry] = {}
 
 
 def _get_config() -> Configuration:
@@ -71,52 +86,123 @@ def _get_runner():
     return _runner
 
 
+def _sanitize_error(exc: BaseException) -> str:
+    """Return a safe error string without leaking internals."""
+    msg = str(exc)
+    for pattern in [
+        r"bolt://[^\s]+",
+        r"neo4j://[^\s]+",
+        r"/[^\s]*skill[^\s]*",
+        r"Traceback.*",
+    ]:
+        msg = re.sub(pattern, "[redacted]", msg, flags=re.IGNORECASE)
+    if len(msg) > 200:
+        msg = msg[:200] + "..."
+    return msg
+
+
+def _check_api_key(request: Request) -> JSONResponse | None:
+    """Validate Bearer token if API_KEY is configured. Returns error response or None."""
+    config = _get_config()
+    if not config.api_key:
+        return None
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:].strip()
+    else:
+        token = auth.strip()
+    if not secrets.compare_digest(token, config.api_key):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return None
+
+
+def _evict_expired_sessions() -> int:
+    """Remove sessions older than session_ttl_seconds. Returns count evicted."""
+    config = _get_config()
+    ttl = config.session_ttl_seconds
+    now = time.monotonic()
+    expired = [k for k, v in _sessions.items() if now - v.last_used > ttl]
+    for k in expired:
+        del _sessions[k]
+    if expired:
+        logger.info("Evicted %d expired sessions", len(expired))
+    return len(expired)
+
+
 async def _run_pipeline(
     user_input: str, context_id: str
-) -> AsyncGenerator[dict, None]:
+):
     """Run the ADK pipeline and yield SSE events for each agent step."""
     runner = _get_runner()
+    config = _get_config()
 
     if context_id not in _sessions:
+        initial_state = get_initial_state()
         session = await runner.session_service.create_session(
-            app_name=APP_NAME, user_id=context_id
+            app_name=APP_NAME, user_id=context_id, state=initial_state
         )
-        _sessions[context_id] = session.id
-    session_id = _sessions[context_id]
+        _sessions[context_id] = _SessionEntry(session.id)
+    entry = _sessions[context_id]
+    entry.touch()
+    session_id = entry.session_id
 
     content = types.Content(role="user", parts=[types.Part(text=user_input)])
 
     current_agent = None
-    async for event in runner.run_async(
-        user_id=context_id, session_id=session_id, new_message=content
-    ):
-        agent_name = getattr(event, "author", None)
-        if agent_name and agent_name != current_agent:
-            current_agent = agent_name
-            yield {
-                "event": "agent_start",
-                "data": json.dumps({"agent": current_agent}),
-            }
+    tracer = get_tracer()
 
-        if hasattr(event, "content") and event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "function_call") and part.function_call:
+    async def _pipeline_iter():
+        nonlocal current_agent
+        with tracer.start_as_current_span(
+            "pipeline.run", attributes={"context_id": context_id}
+        ):
+            async for event in runner.run_async(
+                user_id=context_id, session_id=session_id, new_message=content
+            ):
+                agent_name = getattr(event, "author", None)
+                if agent_name and agent_name != current_agent:
+                    current_agent = agent_name
                     yield {
-                        "event": "tool_call",
-                        "data": json.dumps({
-                            "agent": current_agent,
-                            "tool": part.function_call.name,
-                            "args": part.function_call.args,
-                        }),
+                        "event": "agent_start",
+                        "data": json.dumps({"agent": current_agent}),
                     }
-                if hasattr(part, "text") and part.text:
-                    yield {
-                        "event": "agent_output",
-                        "data": json.dumps({
-                            "agent": current_agent,
-                            "text": part.text,
-                        }),
-                    }
+
+                if hasattr(event, "content") and event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, "function_call") and part.function_call:
+                            yield {
+                                "event": "tool_call",
+                                "data": json.dumps({
+                                    "agent": current_agent,
+                                    "tool": part.function_call.name,
+                                    "args": part.function_call.args,
+                                }),
+                            }
+                        if hasattr(part, "text") and part.text:
+                            yield {
+                                "event": "agent_output",
+                                "data": json.dumps({
+                                    "agent": current_agent,
+                                    "text": part.text,
+                                }),
+                            }
+
+    timed_out = False
+    deadline = asyncio.get_event_loop().time() + config.pipeline_timeout_seconds
+
+    async for event in _pipeline_iter():
+        yield event
+        if asyncio.get_event_loop().time() > deadline:
+            timed_out = True
+            break
+
+    if timed_out:
+        logger.error("Pipeline timed out after %ds", config.pipeline_timeout_seconds)
+        yield {
+            "event": "error",
+            "data": json.dumps({"error": "Pipeline timed out. Please try a simpler request."}),
+        }
+        return
 
     session = await runner.session_service.get_session(
         app_name=APP_NAME, user_id=context_id, session_id=session_id
@@ -133,8 +219,12 @@ async def _run_pipeline(
     }
 
 
-async def generate(request: Request) -> EventSourceResponse:
+async def generate(request: Request) -> EventSourceResponse | JSONResponse:
     """Stream skill generation from a natural language description."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
     body = await request.json()
     description = body.get("description", "").strip()
     if not description:
@@ -143,23 +233,28 @@ async def generate(request: Request) -> EventSourceResponse:
         )
 
     context_id = body.get("context_id", f"builder-{id(request)}")
+    _evict_expired_sessions()
 
     async def event_stream():
         try:
             async for event in _run_pipeline(description, context_id):
                 yield event
         except Exception as exc:
-            logger.exception("Pipeline error: %s", exc)
+            logger.exception("Pipeline error")
             yield {
                 "event": "error",
-                "data": json.dumps({"error": str(exc)}),
+                "data": json.dumps({"error": _sanitize_error(exc)}),
             }
 
     return EventSourceResponse(event_stream())
 
 
-async def refine(request: Request) -> EventSourceResponse:
+async def refine(request: Request) -> EventSourceResponse | JSONResponse:
     """Re-generate with user feedback applied to the previous context."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
     body = await request.json()
     feedback = body.get("feedback", "").strip()
     context_id = body.get("context_id", "")
@@ -180,10 +275,10 @@ async def refine(request: Request) -> EventSourceResponse:
             async for event in _run_pipeline(refinement_prompt, context_id):
                 yield event
         except Exception as exc:
-            logger.exception("Refinement error: %s", exc)
+            logger.exception("Refinement error")
             yield {
                 "event": "error",
-                "data": json.dumps({"error": str(exc)}),
+                "data": json.dumps({"error": _sanitize_error(exc)}),
             }
 
     return EventSourceResponse(event_stream())
@@ -191,6 +286,10 @@ async def refine(request: Request) -> EventSourceResponse:
 
 async def save(request: Request) -> JSONResponse:
     """Save a generated SKILL.md: write to filesystem, commit to Git, embed in Neo4j."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
     body = await request.json()
     skill_content = body.get("skill_content", "").strip()
     plugin = body.get("plugin", "").strip()
@@ -208,10 +307,22 @@ async def save(request: Request) -> JSONResponse:
             status_code=400,
         )
 
+    if not _is_valid_name(plugin):
+        return JSONResponse(
+            {"error": "plugin must be lowercase alphanumeric with hyphens, 1-64 chars"},
+            status_code=400,
+        )
+
     config = _get_config()
     registry_dir = pathlib.Path(config.registry_dir).resolve()
     skill_dir = registry_dir / plugin / skill_name
     skill_file = skill_dir / "SKILL.md"
+
+    if not skill_dir.resolve().is_relative_to(registry_dir):
+        return JSONResponse(
+            {"error": "Invalid path: directory traversal detected"},
+            status_code=400,
+        )
 
     if skill_file.exists():
         return JSONResponse(
@@ -219,13 +330,11 @@ async def save(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    # 1. Write file to registry
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file.write_text(skill_content)
 
     mp_file = _update_marketplace_json(registry_dir, plugin)
 
-    # 2. Git commit + push (system of record)
     git_info: dict = {"committed": False, "pushed": False}
     publisher = _get_git_publisher()
     if publisher.is_available():
@@ -244,29 +353,29 @@ async def save(request: Request) -> JSONResponse:
             }
         except Exception as exc:
             logger.warning("Git publish failed (file saved locally): %s", exc)
-            git_info["error"] = str(exc)
+            git_info["error"] = _sanitize_error(exc)
     else:
         logger.info("Git not available; skill saved to filesystem only")
 
-    # 3. Embed immediately in Neo4j for vector search
-    # ID format must match sync.ts: `${plugin.name}-${entry}` (dashes, not colons)
     embed_info: dict = {"embedded": False}
     try:
         description = _extract_frontmatter_field(skill_content, "description")
         label = skill_name.replace("-", " ").title()
         skill_id = f"{plugin}-{skill_name}"
 
+        max_body = config.embed_skill_body_max_chars
         vs = _get_vector_search()
-        vs.embed_skill(
+        embedded = vs.embed_skill(
             skill_id=skill_id,
             label=label,
             description=description,
-            body=skill_content[:3000],
+            body=skill_content[:max_body],
+            plugin=plugin,
         )
-        embed_info["embedded"] = True
+        embed_info["embedded"] = embedded
     except Exception as exc:
         logger.warning("Immediate embedding failed (will embed on next startup): %s", exc)
-        embed_info["error"] = str(exc)
+        embed_info["error"] = _sanitize_error(exc)
 
     return JSONResponse({
         "ok": True,
@@ -278,18 +387,59 @@ async def save(request: Request) -> JSONResponse:
 
 
 async def health(request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "service": "skill-builder-agent"})
+    """Health check — shallow by default, deep with ?deep=true."""
+    result: dict = {"status": "ok", "service": "skill-builder-agent"}
+
+    deep = request.query_params.get("deep", "").lower() in ("true", "1", "yes")
+    if not deep:
+        return JSONResponse(result)
+
+    config = _get_config()
+
+    try:
+        vs = _get_vector_search()
+        with vs._driver.session(database=config.neo4j_database) as session:
+            session.run("RETURN 1")
+        result["neo4j"] = "connected"
+    except Exception as exc:
+        result["neo4j"] = f"error: {_sanitize_error(exc)}"
+        result["status"] = "degraded"
+
+    try:
+        import litellm
+        await asyncio.wait_for(
+            asyncio.to_thread(
+                litellm.completion,
+                model=config.llm_model,
+                api_base=config.llm_api_base,
+                api_key=config.llm_api_key,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            ),
+            timeout=10,
+        )
+        result["llm"] = "connected"
+    except Exception as exc:
+        result["llm"] = f"error: {_sanitize_error(exc)}"
+        result["status"] = "degraded"
+
+    status_code = 200 if result["status"] == "ok" else 503
+    return JSONResponse(result, status_code=status_code)
 
 
 async def embed_all(request: Request) -> JSONResponse:
     """Trigger embedding generation for all skills missing embeddings."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
     vs = _get_vector_search()
     count = vs.embed_all_skills()
     return JSONResponse({"ok": True, "embedded": count})
 
 
 def _is_valid_name(name: str) -> bool:
-    """Validate a skill name against the Agent Skills spec."""
+    """Validate a skill/plugin name against the Agent Skills spec."""
     if not name or len(name) > 64:
         return False
     if name.startswith("-") or name.endswith("-"):
@@ -328,8 +478,6 @@ def _update_marketplace_json(
 
 def _extract_frontmatter_field(content: str, field: str) -> str:
     """Pull a single field value from YAML frontmatter."""
-    import re
-
     pattern = rf"^{re.escape(field)}:\s*(.+)$"
     match = re.search(pattern, content, re.MULTILINE)
     return match.group(1).strip() if match else ""
@@ -346,7 +494,23 @@ async def on_startup():
         logger.warning("Startup embedding failed (Neo4j may not be ready): %s", exc)
 
 
+async def on_shutdown():
+    """Clean up resources on shutdown."""
+    global _vector_search
+    if _vector_search is not None:
+        try:
+            _vector_search.close()
+            logger.info("Neo4j driver closed")
+        except Exception as exc:
+            logger.warning("Error closing Neo4j driver: %s", exc)
+        _vector_search = None
+
+
 def create_app() -> Starlette:
+    config = _get_config()
+
+    origins = [o.strip() for o in config.cors_origins.split(",") if o.strip()]
+
     routes = [
         Route("/generate", generate, methods=["POST"]),
         Route("/refine", refine, methods=["POST"]),
@@ -358,9 +522,9 @@ def create_app() -> Starlette:
     middleware = [
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Authorization", "Content-Type"],
         ),
     ]
 
@@ -368,6 +532,7 @@ def create_app() -> Starlette:
         routes=routes,
         middleware=middleware,
         on_startup=[on_startup],
+        on_shutdown=[on_shutdown],
     )
 
 
@@ -377,6 +542,8 @@ def run():
         level=getattr(logging, log_level, logging.INFO),
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
+
+    init_tracing()
 
     config = _get_config()
     app = create_app()

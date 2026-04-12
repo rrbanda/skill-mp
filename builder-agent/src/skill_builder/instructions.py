@@ -1,4 +1,9 @@
-"""Instruction templates for each agent in the skill builder pipeline."""
+"""Instruction templates for each agent in the skill builder pipeline.
+
+Large reference content (spec guide, quality patterns, domain templates) is
+injected via ADK state variables rather than Python .format() to keep the
+instruction string lean and avoid "Lost in the Middle" degradation.
+"""
 
 REQUIREMENTS_ANALYZER_INSTRUCTION = """\
 You are a Requirements Analyst for AI agent skills.
@@ -47,15 +52,15 @@ You are an expert Skill Author. Generate a complete, production-grade SKILL.md f
 
 You MUST follow these rules from the Agent Skills specification:
 
-{spec_guide}
+{{spec_guide}}
 
 Apply these quality patterns:
 
-{quality_patterns}
+{{quality_patterns}}
 
 Use this domain-specific guidance:
 
-{domain_templates}
+{{domain_templates}}
 
 ## Your Task
 

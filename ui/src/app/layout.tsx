@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
+import { getSiteConfig } from "@/lib/site-config";
 import "@/styles/globals.css";
+
+const cfg = getSiteConfig();
 
 export const metadata: Metadata = {
   title: {
-    default: "Skills Marketplace — AI Agent Skills Platform",
-    template: "%s | Skills Marketplace",
+    default: cfg.site.title,
+    template: cfg.site.titleTemplate,
   },
-  description:
-    "Discover, explore, and install production-grade AI agent skills for any platform. Augment, Google ADK, OpenAI, LangChain, Cursor, Claude Code, and MCP.",
+  description: cfg.site.description,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

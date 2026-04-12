@@ -6,16 +6,21 @@ import { SkillCard } from "@/components/skills/skill-card";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-export function FeaturedSkills({ skills }: { skills: SkillData[] }) {
-  const featured = selectFeatured(skills);
+interface FeaturedSkillsProps {
+  skills: SkillData[];
+  config: { title: string; subtitle: string; maxCount: number };
+}
+
+export function FeaturedSkills({ skills, config }: FeaturedSkillsProps) {
+  const featured = selectFeatured(skills, config.maxCount);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
       <div className="mb-5 flex items-end justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Featured Skills</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{config.title}</h2>
           <p className="mt-1 text-[var(--color-text-secondary)]">
-            Production-grade skills ready to use on any platform.
+            {config.subtitle}
           </p>
         </div>
         <Link
@@ -43,18 +48,18 @@ export function FeaturedSkills({ skills }: { skills: SkillData[] }) {
   );
 }
 
-function selectFeatured(skills: SkillData[]): SkillData[] {
+function selectFeatured(skills: SkillData[], max: number): SkillData[] {
   const seen = new Set<string>();
   const result: SkillData[] = [];
   for (const skill of skills) {
-    if (!seen.has(skill.pluginName) && result.length < 6) {
+    if (!seen.has(skill.pluginName) && result.length < max) {
       seen.add(skill.pluginName);
       result.push(skill);
     }
   }
   for (const skill of skills) {
-    if (result.length >= 6) break;
+    if (result.length >= max) break;
     if (!result.includes(skill)) result.push(skill);
   }
-  return result.slice(0, 6);
+  return result.slice(0, max);
 }

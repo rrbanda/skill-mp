@@ -1,4 +1,5 @@
 import neo4j, { type Driver, type QueryResult, type Record as Neo4jRecord } from "neo4j-driver";
+import { getSiteConfig } from "@/lib/site-config";
 
 let driver: Driver | null = null;
 
@@ -9,6 +10,10 @@ function getDriver(): Driver {
   const password = process.env.NEO4J_PASSWORD ?? "skillsmarketplace";
   driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
   return driver;
+}
+
+function getDatabase(): string {
+  return getSiteConfig().neo4j.database;
 }
 
 const LABEL_PALETTE = [
@@ -64,7 +69,7 @@ export async function discoverSchema(): Promise<GraphSchema> {
   const d = getDriver();
 
   async function runQuery<T>(cypher: string, mapper: (result: QueryResult) => T): Promise<T> {
-    const s = d.session({ database: "neo4j" });
+    const s = d.session({ database: getDatabase() });
     try {
       const result = await s.run(cypher);
       return mapper(result);
@@ -105,7 +110,7 @@ export async function discoverSchema(): Promise<GraphSchema> {
 
 export async function fetchFullGraph(limit?: number): Promise<NvlGraphData> {
   const d = getDriver();
-  const session = d.session({ database: "neo4j" });
+  const session = d.session({ database: getDatabase() });
   try {
     const schema = await discoverSchema();
     const labelColorMap = new Map(
@@ -196,7 +201,7 @@ export async function fetchNeighborhood(
   limit: number = 100
 ): Promise<NvlGraphData> {
   const d = getDriver();
-  const session = d.session({ database: "neo4j" });
+  const session = d.session({ database: getDatabase() });
   try {
     const schema = await discoverSchema();
     const labelColorMap = new Map(
@@ -279,7 +284,7 @@ export async function fetchNeighborhood(
 
 export async function searchGraph(query: string): Promise<NvlGraphData> {
   const d = getDriver();
-  const session = d.session({ database: "neo4j" });
+  const session = d.session({ database: getDatabase() });
   try {
     const schema = await discoverSchema();
     const labelColorMap = new Map(

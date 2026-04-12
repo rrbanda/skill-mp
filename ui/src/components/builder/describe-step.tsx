@@ -26,9 +26,9 @@ export function DescribeStep({ initialValue, onSubmit }: DescribeStepProps) {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="mx-auto max-w-3xl px-6 py-10" suppressHydrationWarning>
       <div className="mb-8">
-        <h2 className="mb-2 text-2xl font-bold tracking-tight">
+        <h2 className="mb-2 text-2xl font-bold tracking-tight" suppressHydrationWarning>
           Describe your skill
         </h2>
         <p className="text-[var(--color-text-secondary)]">
