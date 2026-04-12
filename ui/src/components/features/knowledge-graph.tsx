@@ -225,6 +225,8 @@ export function KnowledgeGraph({
     <div
       className={`relative flex h-full w-full overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] ${className ?? ""}`}
     >
+      {/* Main graph area — shrinks when detail panel is open */}
+      <div className={`relative flex-1 transition-all duration-300 ${detailNode ? "mr-0" : ""}`}>
       {/* Controls bar */}
       <div className="absolute left-0 right-0 top-0 z-20 flex items-center gap-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-card)]/95 px-3 py-2 backdrop-blur-sm">
         {/* Layout switcher */}
@@ -386,8 +388,9 @@ export function KnowledgeGraph({
           </div>
         )}
       </div>
+      </div>{/* end main graph area */}
 
-      {/* Detail panel */}
+      {/* Side detail panel — slides in from right, doesn't overlay the graph */}
       {detailNode && (
         <DetailPanel
           node={detailNode}
@@ -427,112 +430,122 @@ function DetailPanel({ node, relationships, allNodes, labels, onClose }: DetailP
   const getNodeCaption = (id: string) =>
     allNodes.find((n) => n.id === id)?.caption ?? id;
 
+  const displayProps = Object.entries(node.properties).filter(
+    ([key]) => !["embedding", "assetContent"].includes(key)
+  );
+
   return (
-    <div className="absolute bottom-4 right-4 top-14 z-30 w-80 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-2xl">
-      <div className="sticky top-0 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-card)] p-4">
+    <div className="w-80 shrink-0 border-l border-[var(--color-border)] bg-[var(--color-card)] flex flex-col animate-in slide-in-from-right-4 duration-200">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <Info className="h-4 w-4 text-[var(--color-primary)]" />
+          <Info className="h-4 w-4 text-[var(--color-accent)]" />
           <h3 className="text-sm font-semibold">Node Details</h3>
         </div>
         <button
           onClick={onClose}
-          className="rounded-md p-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+          className="rounded-md p-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="space-y-4 p-4">
-        {/* Caption */}
-        <div>
-          <h4 className="text-base font-bold">{node.caption}</h4>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {node.labels.map((l) => (
-              <span
-                key={l}
-                className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                style={{
-                  backgroundColor: `${labelColorMap.get(l) ?? "#6b7280"}20`,
-                  color: labelColorMap.get(l) ?? "#6b7280",
-                }}
-              >
-                {l}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Properties */}
-        {Object.keys(node.properties).length > 0 && (
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-4 p-4">
+          {/* Title + labels */}
           <div>
-            <h5 className="mb-1.5 text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-              Properties
-            </h5>
-            <dl className="space-y-1">
-              {Object.entries(node.properties).map(([key, value]) => (
-                <div key={key} className="flex gap-2 text-xs">
-                  <dt className="shrink-0 font-medium text-[var(--color-text-secondary)]">
-                    {key}
-                  </dt>
-                  <dd className="truncate text-[var(--color-text-primary)]">
-                    {String(value)}
-                  </dd>
-                </div>
+            <h4 className="text-base font-bold leading-tight">{node.caption}</h4>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {node.labels.map((l) => (
+                <span
+                  key={l}
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: `${labelColorMap.get(l) ?? "#6b7280"}20`,
+                    color: labelColorMap.get(l) ?? "#6b7280",
+                  }}
+                >
+                  {l}
+                </span>
               ))}
-            </dl>
+            </div>
           </div>
-        )}
 
-        {/* Connections */}
-        {connections.length > 0 && (
-          <div>
-            <h5 className="mb-1.5 text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-              Connections ({connections.length})
-            </h5>
+          {/* Properties */}
+          {displayProps.length > 0 && (
+            <div>
+              <h5 className="mb-2 text-[10px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                Properties
+              </h5>
+              <dl className="space-y-1.5">
+                {displayProps.map(([key, value]) => (
+                  <div key={key} className="text-xs">
+                    <dt className="font-medium text-[var(--color-text-secondary)]">
+                      {key}
+                    </dt>
+                    <dd className="mt-0.5 break-words text-[var(--color-text-primary)] leading-relaxed">
+                      {String(value).length > 200
+                        ? `${String(value).slice(0, 200)}...`
+                        : String(value)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
 
-            {incoming.length > 0 && (
-              <div className="mb-2">
-                <span className="text-[10px] font-medium text-[var(--color-text-secondary)]">
-                  Incoming ({incoming.length})
-                </span>
-                <ul className="mt-0.5 space-y-0.5">
-                  {incoming.map((r) => (
-                    <li key={r.id} className="flex items-center gap-1 text-xs">
-                      <span className="text-[var(--color-text-primary)]">
-                        {getNodeCaption(r.from)}
-                      </span>
-                      <span className="rounded bg-[var(--color-bg-tertiary)] px-1 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-                        {r.type}
-                      </span>
-                      <span className="text-[var(--color-text-secondary)]">→</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          {/* Connections */}
+          {connections.length > 0 && (
+            <div>
+              <h5 className="mb-2 text-[10px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                Connections ({connections.length})
+              </h5>
 
-            {outgoing.length > 0 && (
-              <div>
-                <span className="text-[10px] font-medium text-[var(--color-text-secondary)]">
-                  Outgoing ({outgoing.length})
-                </span>
-                <ul className="mt-0.5 space-y-0.5">
-                  {outgoing.map((r) => (
-                    <li key={r.id} className="flex items-center gap-1 text-xs">
-                      <span className="text-[var(--color-text-secondary)]">→</span>
-                      <span className="rounded bg-[var(--color-bg-tertiary)] px-1 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-                        {r.type}
-                      </span>
-                      <span className="text-[var(--color-text-primary)]">
-                        {getNodeCaption(r.to)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
+              {outgoing.length > 0 && (
+                <div className="mb-3">
+                  <span className="text-[10px] font-medium text-[var(--color-text-muted)]">
+                    Outgoing ({outgoing.length})
+                  </span>
+                  <ul className="mt-1 space-y-1">
+                    {outgoing.map((r) => (
+                      <li key={r.id} className="flex items-start gap-1.5 text-xs rounded-md p-1.5 hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                        <span className="mt-0.5 text-[var(--color-text-muted)]">→</span>
+                        <span className="rounded bg-[var(--color-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-accent)] shrink-0">
+                          {r.type}
+                        </span>
+                        <span className="text-[var(--color-text-primary)] break-words">
+                          {getNodeCaption(r.to)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {incoming.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-medium text-[var(--color-text-muted)]">
+                    Incoming ({incoming.length})
+                  </span>
+                  <ul className="mt-1 space-y-1">
+                    {incoming.map((r) => (
+                      <li key={r.id} className="flex items-start gap-1.5 text-xs rounded-md p-1.5 hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                        <span className="text-[var(--color-text-primary)] break-words">
+                          {getNodeCaption(r.from)}
+                        </span>
+                        <span className="rounded bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)] shrink-0">
+                          {r.type}
+                        </span>
+                        <span className="mt-0.5 text-[var(--color-text-muted)]">→</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
