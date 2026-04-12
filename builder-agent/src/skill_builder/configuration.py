@@ -16,5 +16,12 @@ class Configuration(BaseSettings):
 
     registry_dir: str = "../registry"
 
+    git_repo_dir: str = ".."
+    git_remote: str = "origin"
+    git_branch: str = "main"
+    git_push_enabled: bool = True
+    git_author_name: str = "Skill Builder"
+    git_author_email: str = "skill-builder@skills-marketplace.dev"
+
     host: str = "0.0.0.0"
     port: int = 8001

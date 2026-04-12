@@ -65,11 +65,8 @@ Output ONLY the raw SKILL.md content, starting with `---` for the frontmatter.
 Requirements:
 {{requirements_analysis}}
 
-Research Report:
+Research Report (includes similar skills analysis):
 {{research_report}}
-
-Similar Skills for Reference:
-{{exemplar_content}}
 
 ## Output Format
 

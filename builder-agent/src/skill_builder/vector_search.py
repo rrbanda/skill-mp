@@ -110,6 +110,22 @@ class SkillVectorSearch:
         logger.info("Embedded %d skills", count)
         return count
 
+    def embed_skill(self, skill_id: str, label: str, description: str, body: str) -> None:
+        """Generate and store an embedding for a single skill node.
+
+        Called immediately after a new skill is synced to Neo4j so it's
+        available for vector search without waiting for a full re-embed pass.
+        """
+        text = self._build_embedding_text(label=label, description=description, body=body)
+        embedding = self.embed_text(text)
+
+        with self._driver.session(database="neo4j") as session:
+            session.run(
+                "MATCH (s:Skill {id: $id}) SET s.embedding = $embedding",
+                {"id": skill_id, "embedding": embedding},
+            )
+        logger.info("Embedded skill '%s' immediately on save", skill_id)
+
     def search(self, query: str, top_k: int = 5) -> list[SimilarSkill]:
         """Find the most similar skills to a natural language query.
 

@@ -7,7 +7,30 @@ import {
   FolderPlus,
   Loader2,
   AlertCircle,
+  GitCommitHorizontal,
+  Cloud,
+  CloudOff,
+  Brain,
 } from "lucide-react";
+
+interface GitInfo {
+  committed: boolean;
+  pushed: boolean;
+  commit_sha?: string;
+  commit_message?: string;
+  error?: string;
+}
+
+interface EmbedInfo {
+  embedded: boolean;
+  error?: string;
+}
+
+interface SaveResult {
+  path: string;
+  git: GitInfo;
+  embedding: EmbedInfo;
+}
 
 interface PublishStepProps {
   skillContent: string;
@@ -32,7 +55,7 @@ export function PublishStep({
   const [skillName, setSkillName] = useState(() => extractName(skillContent));
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [published, setPublished] = useState<string | null>(null);
+  const [result, setResult] = useState<SaveResult | null>(null);
 
   const handlePublish = useCallback(async () => {
     if (!plugin || !skillName.trim()) return;
@@ -58,7 +81,11 @@ export function PublishStep({
         return;
       }
 
-      setPublished(data.path);
+      setResult({
+        path: data.path,
+        git: data.git ?? { committed: false, pushed: false },
+        embedding: data.embedding ?? { embedded: false },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -66,29 +93,71 @@ export function PublishStep({
     }
   }, [plugin, skillName, skillContent]);
 
-  if (published) {
+  if (result) {
     return (
-      <div className="mx-auto max-w-lg px-6 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10">
-          <Check className="h-7 w-7 text-emerald-500" />
+      <div className="mx-auto max-w-lg px-6 py-12">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10">
+            <Check className="h-7 w-7 text-emerald-500" />
+          </div>
+          <h2 className="mb-2 text-xl font-bold">Skill published</h2>
+          <p className="text-[var(--color-text-secondary)]">
+            Saved to{" "}
+            <code className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 text-sm">
+              registry/{result.path}
+            </code>
+          </p>
         </div>
-        <h2 className="mb-2 text-xl font-bold">Skill published</h2>
-        <p className="mb-1 text-[var(--color-text-secondary)]">
-          Saved to{" "}
-          <code className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 text-sm">
-            registry/{published}
-          </code>
-        </p>
-        <p className="mb-8 text-sm text-[var(--color-text-muted)]">
-          The skill will appear in the knowledge graph after the next Neo4j
-          sync (automatic in dev mode).
-        </p>
-        <button
-          onClick={onComplete}
-          className="rounded-lg bg-blue-500 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600"
-        >
-          Create another skill
-        </button>
+
+        <div className="mb-8 space-y-3">
+          <StatusRow
+            icon={<GitCommitHorizontal className="h-4 w-4" />}
+            label="Git commit"
+            ok={result.git.committed}
+            detail={
+              result.git.committed
+                ? result.git.commit_sha ?? "committed"
+                : result.git.error ?? "Git not available"
+            }
+          />
+          <StatusRow
+            icon={
+              result.git.pushed ? (
+                <Cloud className="h-4 w-4" />
+              ) : (
+                <CloudOff className="h-4 w-4" />
+              )
+            }
+            label="Pushed to remote"
+            ok={result.git.pushed}
+            detail={
+              result.git.pushed
+                ? "Pushed to origin"
+                : result.git.committed
+                  ? "Committed locally, push pending"
+                  : "No commit to push"
+            }
+          />
+          <StatusRow
+            icon={<Brain className="h-4 w-4" />}
+            label="Vector embedding"
+            ok={result.embedding.embedded}
+            detail={
+              result.embedding.embedded
+                ? "Indexed for semantic search"
+                : result.embedding.error ?? "Will embed on next sync"
+            }
+          />
+        </div>
+
+        <div className="text-center">
+          <button
+            onClick={onComplete}
+            className="rounded-lg bg-blue-500 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600"
+          >
+            Create another skill
+          </button>
+        </div>
       </div>
     );
   }
@@ -187,6 +256,37 @@ export function PublishStep({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusRow({
+  icon,
+  label,
+  ok,
+  detail,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  ok: boolean;
+  detail: string;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
+        ok
+          ? "border-emerald-500/20 bg-emerald-500/5"
+          : "border-[var(--color-border)] bg-[var(--color-surface)]"
+      }`}
+    >
+      <span className={ok ? "text-emerald-500" : "text-[var(--color-text-muted)]"}>
+        {icon}
+      </span>
+      <span className="font-medium">{label}</span>
+      <span className="ml-auto text-xs text-[var(--color-text-muted)]">
+        {ok && <Check className="mr-1 inline h-3 w-3 text-emerald-500" />}
+        {detail}
+      </span>
     </div>
   );
 }

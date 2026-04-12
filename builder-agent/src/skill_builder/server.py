@@ -28,6 +28,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from skill_builder.configuration import Configuration
+from skill_builder.git_publisher import GitPublisher
 from skill_builder.pipeline import APP_NAME, KEY_GENERATED_SKILL, KEY_VALIDATION, get_runner
 from skill_builder.vector_search import SkillVectorSearch
 
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 _config: Configuration | None = None
 _runner = None
 _vector_search: SkillVectorSearch | None = None
+_git_publisher: GitPublisher | None = None
 _sessions: dict[str, str] = {}
 
 
@@ -51,6 +53,13 @@ def _get_vector_search() -> SkillVectorSearch:
     if _vector_search is None:
         _vector_search = SkillVectorSearch(_get_config())
     return _vector_search
+
+
+def _get_git_publisher() -> GitPublisher:
+    global _git_publisher
+    if _git_publisher is None:
+        _git_publisher = GitPublisher(_get_config())
+    return _git_publisher
 
 
 def _get_runner():
@@ -181,7 +190,7 @@ async def refine(request: Request) -> EventSourceResponse:
 
 
 async def save(request: Request) -> JSONResponse:
-    """Save a generated SKILL.md to the registry directory."""
+    """Save a generated SKILL.md: write to filesystem, commit to Git, embed in Neo4j."""
     body = await request.json()
     skill_content = body.get("skill_content", "").strip()
     plugin = body.get("plugin", "").strip()
@@ -210,15 +219,60 @@ async def save(request: Request) -> JSONResponse:
             status_code=409,
         )
 
+    # 1. Write file to registry
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file.write_text(skill_content)
 
-    _update_marketplace_json(registry_dir, plugin)
+    mp_file = _update_marketplace_json(registry_dir, plugin)
+
+    # 2. Git commit + push (system of record)
+    git_info: dict = {"committed": False, "pushed": False}
+    publisher = _get_git_publisher()
+    if publisher.is_available():
+        try:
+            result = publisher.publish(
+                skill_file=skill_file,
+                marketplace_file=mp_file,
+                plugin=plugin,
+                skill_name=skill_name,
+            )
+            git_info = {
+                "committed": True,
+                "pushed": result.pushed,
+                "commit_sha": result.commit_sha,
+                "commit_message": result.commit_message,
+            }
+        except Exception as exc:
+            logger.warning("Git publish failed (file saved locally): %s", exc)
+            git_info["error"] = str(exc)
+    else:
+        logger.info("Git not available; skill saved to filesystem only")
+
+    # 3. Embed immediately in Neo4j for vector search
+    embed_info: dict = {"embedded": False}
+    try:
+        description = _extract_frontmatter_field(skill_content, "description")
+        label = skill_name.replace("-", " ").title()
+        skill_id = f"{plugin}:{skill_name}"
+
+        vs = _get_vector_search()
+        vs.embed_skill(
+            skill_id=skill_id,
+            label=label,
+            description=description,
+            body=skill_content[:3000],
+        )
+        embed_info["embedded"] = True
+    except Exception as exc:
+        logger.warning("Immediate embedding failed (will embed on next startup): %s", exc)
+        embed_info["error"] = str(exc)
 
     return JSONResponse({
         "ok": True,
         "path": str(skill_dir.relative_to(registry_dir)),
         "file": str(skill_file.relative_to(registry_dir)),
+        "git": git_info,
+        "embedding": embed_info,
     })
 
 
@@ -244,11 +298,13 @@ def _is_valid_name(name: str) -> bool:
     return all(c.isalnum() or c == "-" for c in name) and name == name.lower()
 
 
-def _update_marketplace_json(registry_dir: pathlib.Path, plugin: str) -> None:
-    """Ensure the plugin exists in marketplace.json."""
+def _update_marketplace_json(
+    registry_dir: pathlib.Path, plugin: str
+) -> pathlib.Path | None:
+    """Ensure the plugin exists in marketplace.json. Returns the file path if modified."""
     mp_file = registry_dir / "marketplace.json"
     if not mp_file.exists():
-        return
+        return None
 
     try:
         data = json.loads(mp_file.read_text())
@@ -262,8 +318,20 @@ def _update_marketplace_json(registry_dir: pathlib.Path, plugin: str) -> None:
                 "tags": [plugin],
             })
             mp_file.write_text(json.dumps(data, indent=2) + "\n")
+            return mp_file
     except Exception as exc:
         logger.warning("Could not update marketplace.json: %s", exc)
+
+    return None
+
+
+def _extract_frontmatter_field(content: str, field: str) -> str:
+    """Pull a single field value from YAML frontmatter."""
+    import re
+
+    pattern = rf"^{re.escape(field)}:\s*(.+)$"
+    match = re.search(pattern, content, re.MULTILINE)
+    return match.group(1).strip() if match else ""
 
 
 async def on_startup():
