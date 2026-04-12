@@ -215,6 +215,28 @@ function inferEdges(skills: SkillRecord[]): TypedEdge[] {
     }
   }
 
+  // 4. SAME_PLUGIN: connect all skills within non-SDK plugins
+  const nonSdkPlugins = new Map<string, SkillRecord[]>();
+  for (const s of skills) {
+    if (s.plugin.startsWith("azure-sdk-")) continue;
+    if (!nonSdkPlugins.has(s.plugin)) nonSdkPlugins.set(s.plugin, []);
+    nonSdkPlugins.get(s.plugin)!.push(s);
+  }
+
+  for (const [pluginName, pluginSkills] of nonSdkPlugins) {
+    if (pluginSkills.length < 2) continue;
+    for (let i = 0; i < pluginSkills.length; i++) {
+      for (let j = i + 1; j < pluginSkills.length; j++) {
+        addEdge(
+          pluginSkills[i]!.id,
+          pluginSkills[j]!.id,
+          "SAME_PLUGIN",
+          `Both in ${pluginName} plugin`
+        );
+      }
+    }
+  }
+
   return edges;
 }
 
@@ -314,7 +336,7 @@ async function upsertEdges(
   }
 
   // Clear all typed edges
-  for (const type of ["COMPLEMENTS", "CROSS_LANGUAGE", "USES_AUTH", "SAME_DOMAIN", "RELATES_TO"]) {
+  for (const type of ["COMPLEMENTS", "CROSS_LANGUAGE", "USES_AUTH", "SAME_DOMAIN", "SAME_PLUGIN", "RELATES_TO"]) {
     await session.run(`MATCH ()-[r:${type}]->() DELETE r`);
   }
 

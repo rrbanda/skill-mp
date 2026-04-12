@@ -275,6 +275,7 @@ export function KnowledgeGraph({
               CROSS_LANGUAGE: "#f59e0b",
               USES_AUTH: "#ef4444",
               SAME_DOMAIN: "#8b5cf6",
+              SAME_PLUGIN: "#06b6d4",
               COMPLEMENTS: "#10b981",
               RELATES_TO: "#475569",
             };
