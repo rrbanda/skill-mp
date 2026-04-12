@@ -6,6 +6,8 @@ import { HowItWorks } from "@/components/home/how-it-works";
 import { PlatformLogos } from "@/components/home/platform-logos";
 import { getClientSiteConfig } from "@/lib/site-config";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [skills, marketplace] = await Promise.all([getAllSkills(), getMarketplace()]);
   const config = getClientSiteConfig();

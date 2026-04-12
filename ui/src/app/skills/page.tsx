@@ -2,6 +2,8 @@ import { getAllSkills, getMarketplace } from "@/lib/skills-data";
 import { SkillGrid } from "@/components/skills/skill-grid";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Browse Skills",
   description: "Discover AI agent skills for documentation, DevOps, API design, testing, and security.",

@@ -4,13 +4,10 @@ import { SkillDetailView } from "@/components/skills/skill-detail-view";
 import type { Metadata } from "next";
 import { humanize } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 interface Props {
   params: Promise<{ slug: string }>;
-}
-
-export async function generateStaticParams() {
-  const skills = await getAllSkills();
-  return skills.map((s) => ({ slug: s.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
