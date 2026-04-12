@@ -31,6 +31,12 @@ from starlette.routing import Route
 
 from skill_builder.configuration import Configuration
 from skill_builder.git_publisher import GitPublisher
+from skill_builder.graph_pipeline import (
+    PipelineProgress,
+    PipelineResult,
+    run_graph_pipeline,
+    run_incremental_update,
+)
 from skill_builder.observability import get_tracer, init_tracing
 from skill_builder.pipeline import APP_NAME, KEY_GENERATED_SKILL, KEY_VALIDATION, get_initial_state, get_runner
 from skill_builder.vector_search import SkillVectorSearch
@@ -438,6 +444,97 @@ async def embed_all(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "embedded": count})
 
 
+async def graph_build(request: Request) -> EventSourceResponse | JSONResponse:
+    """Run the full GraphRAG pipeline, streaming progress via SSE."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
+    config = _get_config()
+    vs = _get_vector_search()
+
+    async def event_stream():
+        try:
+            async for event in run_graph_pipeline(config, vs):
+                if isinstance(event, PipelineResult):
+                    yield {
+                        "event": "complete",
+                        "data": json.dumps({
+                            "nodes": event.nodes,
+                            "edges": event.edges,
+                            "communities": event.communities,
+                            "quality_score": event.quality_score,
+                            "duration_ms": event.duration_ms,
+                            "phases_completed": event.phases_completed,
+                            "errors": event.errors,
+                        }),
+                    }
+                elif isinstance(event, PipelineProgress):
+                    yield {
+                        "event": "progress",
+                        "data": json.dumps({
+                            "phase": event.phase,
+                            "step": event.step,
+                            "detail": event.detail,
+                            "progress": round(event.progress, 3),
+                        }),
+                    }
+        except Exception as exc:
+            logger.exception("GraphRAG pipeline error")
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": _sanitize_error(exc)}),
+            }
+
+    return EventSourceResponse(event_stream())
+
+
+async def graph_update(request: Request) -> JSONResponse:
+    """Incremental graph update for a single newly saved skill."""
+    auth_error = _check_api_key(request)
+    if auth_error:
+        return auth_error
+
+    body = await request.json()
+    skill_id = body.get("skill_id", "").strip()
+    skill_content = body.get("skill_content", "").strip()
+    plugin = body.get("plugin", "").strip()
+    skill_name = body.get("skill_name", "").strip()
+
+    if not all([skill_id, skill_content, plugin, skill_name]):
+        return JSONResponse(
+            {"error": "skill_id, skill_content, plugin, and skill_name are required"},
+            status_code=400,
+        )
+
+    config = _get_config()
+    vs = _get_vector_search()
+
+    try:
+        result = await run_incremental_update(
+            config, vs,
+            skill_id=skill_id,
+            skill_content=skill_content,
+            plugin=plugin,
+            skill_name=skill_name,
+        )
+        return JSONResponse({
+            "ok": True,
+            "nodes": result.nodes,
+            "edges": result.edges,
+            "communities": result.communities,
+            "duration_ms": result.duration_ms,
+            "phases_completed": result.phases_completed,
+            "errors": result.errors,
+        })
+    except Exception as exc:
+        logger.exception("Incremental graph update failed")
+        return JSONResponse(
+            {"error": _sanitize_error(exc)},
+            status_code=500,
+        )
+
+
 def _is_valid_name(name: str) -> bool:
     """Validate a skill/plugin name against the Agent Skills spec."""
     if not name or len(name) > 64:
@@ -517,6 +614,8 @@ def create_app() -> Starlette:
         Route("/save", save, methods=["POST"]),
         Route("/health", health, methods=["GET"]),
         Route("/embed", embed_all, methods=["POST"]),
+        Route("/graph/build", graph_build, methods=["POST"]),
+        Route("/graph/update", graph_update, methods=["POST"]),
     ]
 
     middleware = [

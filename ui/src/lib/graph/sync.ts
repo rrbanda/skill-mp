@@ -210,6 +210,47 @@ function inferEdges(skills: SkillRecord[]): TypedEdge[] {
 
 let lastSyncTime = 0;
 
+async function tryGraphRAGBuild(): Promise<boolean> {
+  const agentUrl = process.env.BUILDER_AGENT_URL;
+  if (!agentUrl) return false;
+
+  try {
+    const resp = await fetch(`${agentUrl}/graph/build`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!resp.ok) return false;
+
+    const reader = resp.body?.getReader();
+    if (!reader) return false;
+
+    const decoder = new TextDecoder();
+    let completed = false;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      for (const line of text.split("\n")) {
+        if (line.startsWith("event: complete")) {
+          completed = true;
+        }
+        if (line.startsWith("data: ") && completed) {
+          const data = JSON.parse(line.slice(6));
+          console.log(
+            `[graphrag] AI pipeline complete: ${data.nodes} nodes, ${data.edges} edges, ` +
+            `${data.communities} communities (${data.duration_ms}ms)`
+          );
+        }
+      }
+    }
+    return completed;
+  } catch (err) {
+    console.warn("[graphrag] Builder agent unavailable, using deterministic fallback:", err);
+    return false;
+  }
+}
+
 export async function syncRegistryToNeo4j(
   registryDir?: string
 ): Promise<SyncResult> {
@@ -237,6 +278,7 @@ export async function syncRegistryToNeo4j(
     return { nodes: 0, edges: 0, cleaned: 0, durationMs: performance.now() - start };
   }
 
+  // Deterministic sync first (fast, always works)
   const inferredEdges = inferEdges(skills);
   const allEdges = [...complementEdges, ...inferredEdges];
 
@@ -249,12 +291,23 @@ export async function syncRegistryToNeo4j(
     const edgeCount = await upsertEdges(session, allEdges, skills);
     const cleaned = await cleanStale(session, skills);
 
-    return {
+    const deterministicResult: SyncResult = {
       nodes: skills.length,
       edges: edgeCount,
       cleaned,
       durationMs: Math.round(performance.now() - start),
     };
+
+    // Trigger GraphRAG pipeline in background (non-blocking)
+    // The deterministic graph is already live; GraphRAG will overwrite
+    // it with richer, LLM-classified relationships when complete.
+    if (process.env.BUILDER_AGENT_URL) {
+      tryGraphRAGBuild().catch((err) =>
+        console.warn("[graphrag] Background pipeline failed:", err)
+      );
+    }
+
+    return deterministicResult;
   } finally {
     await session.close();
     await driver.close();

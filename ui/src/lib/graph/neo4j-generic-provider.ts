@@ -7,6 +7,11 @@ const REL_COLORS: Record<string, string> = {
   SAME_DOMAIN: "#8b5cf6",
   SAME_PLUGIN: "#06b6d4",
   COMPLEMENTS: "#10b981",
+  DEPENDS_ON: "#ef4444",
+  ALTERNATIVE_TO: "#f59e0b",
+  EXTENDS: "#8b5cf6",
+  PRECEDES: "#06b6d4",
+  MEMBER_OF: "#64748b",
   RELATES_TO: "#475569",
 };
 

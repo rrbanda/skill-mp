@@ -17,6 +17,8 @@ import {
   GitBranch,
   X,
   Info,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 const NvlWrapper = dynamic(
@@ -48,6 +50,8 @@ export function KnowledgeGraph({
     new Set(data.schema.labels.map((l) => l.name))
   );
   const [detailNode, setDetailNode] = useState<NvlNode | null>(null);
+  const [graphBuilding, setGraphBuilding] = useState(false);
+  const [buildProgress, setBuildProgress] = useState("");
 
   const labelColorMap = useMemo(
     () => new Map(data.schema.labels.map((l) => [l.name, l.color])),
@@ -153,6 +157,51 @@ export function KnowledgeGraph({
     setEnabledLabels(new Set(data.schema.labels.map((l) => l.name)));
   }, [data.schema.labels]);
 
+  const triggerGraphBuild = useCallback(async () => {
+    if (graphBuilding) return;
+    setGraphBuilding(true);
+    setBuildProgress("Starting GraphRAG pipeline...");
+    try {
+      const resp = await fetch("/api/graph?action=build", { method: "POST" });
+      if (!resp.ok) {
+        setBuildProgress(`Error: ${resp.statusText}`);
+        return;
+      }
+      const reader = resp.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.detail) setBuildProgress(payload.detail);
+              if (payload.nodes !== undefined) {
+                setBuildProgress(
+                  `Complete: ${payload.nodes} nodes, ${payload.edges} edges, ${payload.communities} communities`
+                );
+                setTimeout(() => window.location.reload(), 2000);
+              }
+            } catch { /* partial JSON */ }
+          }
+        }
+      }
+    } catch (err) {
+      setBuildProgress(`Error: ${err instanceof Error ? err.message : "Unknown"}`);
+    } finally {
+      setTimeout(() => {
+        setGraphBuilding(false);
+        setBuildProgress("");
+      }, 5000);
+    }
+  }, [graphBuilding]);
+
   const toggleLabel = useCallback((label: string) => {
     setEnabledLabels((prev) => {
       const next = new Set(prev);
@@ -251,6 +300,23 @@ export function KnowledgeGraph({
 
         {/* Actions */}
         <button
+          onClick={triggerGraphBuild}
+          disabled={graphBuilding}
+          className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+            graphBuilding
+              ? "cursor-wait bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
+          }`}
+          title="Rebuild graph with AI (GraphRAG pipeline)"
+        >
+          {graphBuilding ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          AI
+        </button>
+        <button
           onClick={fitToScreen}
           className="rounded-lg p-1.5 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
           title="Fit to screen"
@@ -277,6 +343,11 @@ export function KnowledgeGraph({
               SAME_DOMAIN: "#8b5cf6",
               SAME_PLUGIN: "#06b6d4",
               COMPLEMENTS: "#10b981",
+              DEPENDS_ON: "#ef4444",
+              ALTERNATIVE_TO: "#f59e0b",
+              EXTENDS: "#8b5cf6",
+              PRECEDES: "#06b6d4",
+              MEMBER_OF: "#64748b",
               RELATES_TO: "#475569",
             };
             const c = colors[type] ?? "#475569";
@@ -288,6 +359,14 @@ export function KnowledgeGraph({
               </span>
             );
           })}
+        </div>
+      )}
+
+      {/* GraphRAG build progress overlay */}
+      {graphBuilding && buildProgress && (
+        <div className="absolute bottom-4 left-4 z-30 flex items-center gap-2 rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-card)]/95 px-3 py-2 shadow-lg backdrop-blur-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-[var(--color-accent)]" />
+          <span className="text-xs text-[var(--color-text-secondary)]">{buildProgress}</span>
         </div>
       )}
 

@@ -44,6 +44,13 @@ class Configuration(BaseSettings):
     git_author_email: str = "skill-builder@skills-marketplace.dev"
     git_command_timeout: int = 30
 
+    # GraphRAG pipeline
+    graph_candidate_top_k: int = 15
+    graph_batch_size: int = 10
+    graph_max_concurrent_llm: int = 10
+    graph_confidence_threshold: float = 0.6
+    graph_cache_path: str = ""
+
     # Security
     api_key: str = ""
     cors_origins: str = "http://localhost:3000"

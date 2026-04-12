@@ -236,6 +236,49 @@ class SkillVectorSearch:
                 for r in result
             ]
 
+    def find_candidates(
+        self, skill_id: str, top_k: int = 15
+    ) -> list[SimilarSkill]:
+        """Find top-k candidate skills similar to a given skill by its stored embedding."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(
+                "MATCH (s:Skill {id: $id}) RETURN s.embedding AS embedding",
+                {"id": skill_id},
+            )
+            record = result.single()
+
+        if not record or record["embedding"] is None:
+            return []
+
+        embedding = record["embedding"]
+        with self._driver.session(database=self._database) as session:
+            result = session.run(
+                f"""
+                CALL db.index.vector.queryNodes('{self._index_name}', $topK, $queryVector)
+                YIELD node, score
+                WHERE node.id <> $excludeId
+                RETURN node.id AS id,
+                       node.label AS label,
+                       node.plugin AS plugin,
+                       node.description AS description,
+                       node.body AS body,
+                       score
+                ORDER BY score DESC
+                """,
+                {"topK": top_k + 1, "queryVector": embedding, "excludeId": skill_id},
+            )
+            return [
+                SimilarSkill(
+                    id=r["id"],
+                    label=r["label"] or "",
+                    plugin=r["plugin"] or "",
+                    description=r["description"] or "",
+                    body=r["body"] or "",
+                    score=float(r["score"]),
+                )
+                for r in result
+            ][:top_k]
+
     def _build_embedding_text(
         self, label: str, description: str, body: str, max_chars: int | None = None
     ) -> str:
