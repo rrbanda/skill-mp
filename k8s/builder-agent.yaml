@@ -37,6 +37,7 @@ spec:
           emptyDir: {}
       containers:
         - name: builder-agent
+          # Override via: kubectl set image deployment/builder-agent builder-agent=YOUR_IMAGE
           image: ghcr.io/rrbanda/skill-mp/agent:latest
           imagePullPolicy: Always
           ports:

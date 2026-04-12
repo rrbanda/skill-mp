@@ -1,0 +1,17 @@
+# Default owners for the repository
+* @rrbanda
+
+# UI (Next.js frontend)
+/ui/ @rrbanda
+
+# Builder Agent (Python ADK service)
+/builder-agent/ @rrbanda
+
+# Kubernetes / OpenShift manifests
+/k8s/ @rrbanda
+
+# CI/CD workflows
+/.github/ @rrbanda
+
+# Registry (skill definitions)
+/registry/ @rrbanda

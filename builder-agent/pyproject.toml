@@ -23,12 +23,37 @@ dependencies = [
     "python-louvain>=0.16",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
 [project.scripts]
-server = "skill_builder.server:run"
-cli = "skill_builder.cli:main"
+skill-builder-server = "skill_builder.server:run"
+skill-builder = "skill_builder.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/rrbanda/skill-mp"
+Repository = "https://github.com/rrbanda/skill-mp"
+Issues = "https://github.com/rrbanda/skill-mp/issues"
+Documentation = "https://github.com/rrbanda/skill-mp#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skill_builder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
 
 [build-system]
 requires = ["hatchling"]

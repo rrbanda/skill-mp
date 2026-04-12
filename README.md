@@ -136,6 +136,15 @@ Prompt instructions for the AI agent...
 
 If Neo4j is running and auto-sync is enabled, the skill appears in the knowledge graph automatically.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and how to submit changes.
+
+## Community
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)

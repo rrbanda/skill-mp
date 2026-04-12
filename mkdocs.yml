@@ -1,0 +1,54 @@
+site_name: Skills Marketplace
+site_description: Open-source platform for AI agent skills
+site_url: https://rrbanda.github.io/skill-mp
+repo_url: https://github.com/rrbanda/skill-mp
+repo_name: rrbanda/skill-mp
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: getting-started.md
+      - Configuration: configuration.md
+  - Guides:
+      - Contributing: contributing.md
+      - Skill Authoring: skill-authoring.md
+      - Deployment: deployment.md
+  - Architecture:
+      - Overview: ARCHITECTURE.md
+  - API:
+      - Builder Agent API: api-reference.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - tables
+  - toc:
+      permalink: true

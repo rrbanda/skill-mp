@@ -3,6 +3,7 @@ name: Build & Push to GHCR
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       deploy:
@@ -49,12 +50,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute image tags
+        id: tags
+        run: |
+          TAGS="latest ${{ github.sha }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            TAGS="$TAGS ${VERSION} ${VERSION%.*}"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
       - name: Build image with Buildah
         id: build
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
-          tags: latest ${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
           context: ${{ matrix.context }}
           containerfiles: ${{ matrix.dockerfile }}
 

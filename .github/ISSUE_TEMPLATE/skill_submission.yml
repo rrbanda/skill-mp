@@ -1,0 +1,40 @@
+name: Skill Submission
+description: Submit a new skill to the registry
+title: "[Skill]: "
+labels: ["skill-submission"]
+body:
+  - type: input
+    id: skill-name
+    attributes:
+      label: Skill Name
+      description: Lowercase with hyphens (e.g. terraform-config-reviewer)
+      placeholder: my-skill-name
+    validations:
+      required: true
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin Category
+      options:
+        - docs
+        - devops
+        - api
+        - testing
+        - security
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What does this skill do?
+    validations:
+      required: true
+  - type: textarea
+    id: platforms
+    attributes:
+      label: Target Platforms
+      description: Which AI agent platforms is this skill designed for?
+      placeholder: cursor, claude-code, windsurf, adk
+    validations:
+      required: true
