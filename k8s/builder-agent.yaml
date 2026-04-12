@@ -40,18 +40,20 @@ spec:
             - containerPort: 8001
           envFrom:
             - configMapRef:
-                name: skills-marketplace-config
+                name: shared-config
+            - configMapRef:
+                name: builder-agent-config
           readinessProbe:
             httpGet:
               path: /health
               port: 8001
-            initialDelaySeconds: 15
+            initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8001
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 20
           resources:
             requests:
