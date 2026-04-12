@@ -4,7 +4,8 @@ import { parseSkillMd } from "./parser";
 import type { MarketplaceData, PluginEntry, SkillData, SkillAssets } from "./types";
 import { slugify, getPluginColor } from "./types";
 
-const REGISTRY_DIR = path.join(process.cwd(), "..", "registry");
+const REGISTRY_DIR =
+  process.env.REGISTRY_DIR ?? path.join(process.cwd(), "..", "registry");
 
 export async function getMarketplace(): Promise<MarketplaceData> {
   try {

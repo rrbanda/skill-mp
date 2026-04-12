@@ -42,5 +42,6 @@ data:
   BUILDER_AGENT_URL: "http://builder-agent:8001"
   NEXT_PUBLIC_SITE_NAME: "Skills Marketplace"
   NEXT_PUBLIC_GITHUB_URL: "https://github.com/rrbanda/skill-mp"
+  REGISTRY_DIR: "/app/registry"
   HOSTNAME: "0.0.0.0"
   PORT: "3000"

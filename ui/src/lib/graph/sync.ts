@@ -44,7 +44,9 @@ export async function syncRegistryToNeo4j(
 
   const start = performance.now();
   const dir =
-    registryDir ?? path.resolve(process.cwd(), "..", "registry");
+    registryDir ??
+    process.env.REGISTRY_DIR ??
+    path.resolve(process.cwd(), "..", "registry");
 
   const uri = process.env.NEO4J_URI ?? "bolt://localhost:7687";
   const user = process.env.NEO4J_USER ?? "neo4j";

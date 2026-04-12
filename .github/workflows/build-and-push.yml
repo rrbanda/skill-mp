@@ -28,7 +28,7 @@ jobs:
       matrix:
         include:
           - image: ui
-            context: ./ui
+            context: .
             dockerfile: ./ui/Dockerfile
           - image: agent
             context: ./builder-agent

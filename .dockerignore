@@ -1,0 +1,9 @@
+.git
+builder-agent/.venv
+builder-agent/__pycache__
+ui/node_modules
+ui/.next
+.env
+.env.local
+*.env*.local
+.DS_Store
