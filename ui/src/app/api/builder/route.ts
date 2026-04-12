@@ -65,20 +65,29 @@ async function proxyStream(
 async function proxySave(
   body: Record<string, unknown>
 ): Promise<NextResponse> {
+  let upstream: Response;
   try {
-    const upstream = await fetch(`${BUILDER_AGENT_URL}/save`, {
+    upstream = await fetch(`${BUILDER_AGENT_URL}/save`, {
       method: "POST",
       headers: upstreamHeaders(),
       body: JSON.stringify(body),
     });
-
-    const data = await upstream.json();
-    return NextResponse.json(data, { status: upstream.status });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
       { error: `Failed to reach builder agent: ${message}` },
       { status: 502 }
+    );
+  }
+
+  const text = await upstream.text();
+  try {
+    const data = JSON.parse(text);
+    return NextResponse.json(data, { status: upstream.status });
+  } catch {
+    return NextResponse.json(
+      { error: text || `Builder agent returned ${upstream.status}` },
+      { status: upstream.status >= 400 ? upstream.status : 502 }
     );
   }
 }

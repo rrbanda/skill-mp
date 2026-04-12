@@ -4,7 +4,9 @@ WORKDIR /app
 COPY . .
 RUN uv sync --no-cache --locked --link-mode copy
 
-RUN chown -R 1001:1001 /app
+RUN mkdir -p /app/registry \
+ && chown -R 1001:0 /app \
+ && chmod -R g=u /app
 USER 1001
 
 EXPOSE 8001

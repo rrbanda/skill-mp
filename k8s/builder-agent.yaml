@@ -32,12 +32,18 @@ spec:
       labels:
         app: builder-agent
     spec:
+      volumes:
+        - name: registry
+          emptyDir: {}
       containers:
         - name: builder-agent
           image: ghcr.io/rrbanda/skill-mp/agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8001
+          volumeMounts:
+            - name: registry
+              mountPath: /app/registry
           envFrom:
             - configMapRef:
                 name: shared-config
