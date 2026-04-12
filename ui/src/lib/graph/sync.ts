@@ -21,6 +21,7 @@ interface SkillRecord {
   complexity: string;
   workflowSteps: number;
   assetCount: number;
+  body: string;
 }
 
 interface EdgeRecord {
@@ -113,6 +114,7 @@ async function upsertSkills(session: Session, skills: SkillRecord[]) {
         s.complexity = skill.complexity,
         s.workflowSteps = skill.workflowSteps,
         s.assetCount = skill.assetCount,
+        s.body = skill.body,
         s.updatedAt = datetime()
     `,
     { skills }
@@ -228,6 +230,7 @@ async function scanRegistry(
           complexity: getComplexity(lineCount),
           workflowSteps,
           assetCount,
+          body: body.slice(0, 3000),
         });
 
         for (const rel of relatedSkills) {

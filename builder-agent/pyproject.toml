@@ -1,0 +1,24 @@
+[project]
+name = "skill-builder-agent"
+version = "0.1.0"
+description = "ADK multi-agent pipeline that generates SKILL.md files from natural language, with Neo4j vector-powered exemplar retrieval."
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk>=1.0.0",
+    "litellm",
+    "uvicorn>=0.30.0",
+    "starlette>=0.40.0",
+    "pydantic-settings>=2.8.1",
+    "neo4j>=5.20.0",
+    "sentence-transformers>=3.0.0",
+    "sse-starlette>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+server = "skill_builder.server:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
