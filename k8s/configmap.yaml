@@ -29,6 +29,9 @@ data:
   CORS_ORIGINS: "https://skills-marketplace-skills-marketplace.apps.ocp.v7hjl.sandbox2288.opentlc.com,http://localhost:3000"
   PIPELINE_TIMEOUT_SECONDS: "120"
   UV_CACHE_DIR: "/tmp/uv-cache"
+  HF_HOME: "/tmp/hf-cache"
+  TRANSFORMERS_CACHE: "/tmp/hf-cache"
+  SENTENCE_TRANSFORMERS_HOME: "/tmp/hf-cache"
 ---
 apiVersion: v1
 kind: ConfigMap
