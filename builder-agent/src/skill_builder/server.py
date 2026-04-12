@@ -249,11 +249,12 @@ async def save(request: Request) -> JSONResponse:
         logger.info("Git not available; skill saved to filesystem only")
 
     # 3. Embed immediately in Neo4j for vector search
+    # ID format must match sync.ts: `${plugin.name}-${entry}` (dashes, not colons)
     embed_info: dict = {"embedded": False}
     try:
         description = _extract_frontmatter_field(skill_content, "description")
         label = skill_name.replace("-", " ").title()
-        skill_id = f"{plugin}:{skill_name}"
+        skill_id = f"{plugin}-{skill_name}"
 
         vs = _get_vector_search()
         vs.embed_skill(
