@@ -24,13 +24,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - image: ui
             context: ./ui
             dockerfile: ./ui/Dockerfile
           - image: agent
-            context: .
+            context: ./builder-agent
             dockerfile: ./builder-agent/Dockerfile
     steps:
       - name: Checkout
