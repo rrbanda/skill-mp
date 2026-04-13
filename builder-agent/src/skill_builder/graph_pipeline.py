@@ -69,6 +69,7 @@ class PipelineResult:
 # Full pipeline
 # ---------------------------------------------------------------------------
 
+
 async def run_graph_pipeline(
     config: Configuration,
     vs: SkillVectorSearch,
@@ -83,16 +84,10 @@ async def run_graph_pipeline(
     """
     start = time.time()
     reg_dir = registry_dir or config.registry_dir
-    c_path = (
-        pathlib.Path(cache_path)
-        if cache_path
-        else pathlib.Path(reg_dir) / ".graph-cache.json"
-    )
+    c_path = pathlib.Path(cache_path) if cache_path else pathlib.Path(reg_dir) / ".graph-cache.json"
     result = PipelineResult()
 
-    yield PipelineProgress(
-        phase="init", step="scan", detail="Scanning registry", progress=0.0
-    )
+    yield PipelineProgress(phase="init", step="scan", detail="Scanning registry", progress=0.0)
 
     skills = await asyncio.to_thread(scan_registry, reg_dir)
     if not skills:
@@ -108,7 +103,8 @@ async def run_graph_pipeline(
     changed_ids = get_changed_skills(cache, current_content)
 
     yield PipelineProgress(
-        phase="init", step="ready",
+        phase="init",
+        step="ready",
         detail=f"Found {len(skills)} skills, {len(changed_ids)} changed since last run",
         progress=0.05,
     )
@@ -141,14 +137,10 @@ async def run_graph_pipeline(
         result.errors.append(f"Community detection: {exc}")
 
     # Write to Neo4j
-    yield PipelineProgress(
-        phase="write", step="neo4j", detail="Writing graph to Neo4j", progress=0.0
-    )
+    yield PipelineProgress(phase="write", step="neo4j", detail="Writing graph to Neo4j", progress=0.0)
 
     try:
-        nodes, edges, communities = await asyncio.to_thread(
-            write_graph_to_neo4j, config, skills, cache
-        )
+        nodes, edges, communities = await asyncio.to_thread(write_graph_to_neo4j, config, skills, cache)
         result.nodes = nodes
         result.edges = edges
         result.communities = communities
@@ -186,6 +178,7 @@ async def run_graph_pipeline(
 # Incremental update (single skill)
 # ---------------------------------------------------------------------------
 
+
 async def run_incremental_update(
     config: Configuration,
     vs: SkillVectorSearch,
@@ -202,11 +195,7 @@ async def run_incremental_update(
     skill and classifies its relationships against existing skills.
     """
     reg_dir = registry_dir or config.registry_dir
-    c_path = (
-        pathlib.Path(cache_path)
-        if cache_path
-        else pathlib.Path(reg_dir) / ".graph-cache.json"
-    )
+    c_path = pathlib.Path(cache_path) if cache_path else pathlib.Path(reg_dir) / ".graph-cache.json"
     start = time.time()
     result = PipelineResult()
 
@@ -241,9 +230,7 @@ async def run_incremental_update(
 
     # Write & save
     try:
-        nodes, edges, communities = await asyncio.to_thread(
-            write_graph_to_neo4j, config, all_skills, cache
-        )
+        nodes, edges, communities = await asyncio.to_thread(write_graph_to_neo4j, config, all_skills, cache)
         result.nodes = nodes
         result.edges = edges
         result.communities = communities

@@ -55,6 +55,7 @@ from skill_builder.vector_search import SkillVectorSearch
 
 logger = logging.getLogger(__name__)
 
+
 def _conf(config: Configuration) -> tuple[float, int, int, int]:
     """Read graph tuning params from config, falling back to defaults."""
     return (
@@ -128,13 +129,9 @@ async def _run_agent_once(
     initial_state = get_graph_initial_state()
     user_id = f"graph-pipeline-{id(agent)}-{time.monotonic_ns()}"
 
-    session = await runner.session_service.create_session(
-        app_name=GRAPH_APP_NAME, user_id=user_id, state=initial_state
-    )
+    session = await runner.session_service.create_session(app_name=GRAPH_APP_NAME, user_id=user_id, state=initial_state)
 
-    content = types.Content(
-        role="user", parts=[types.Part(text=user_prompt)]
-    )
+    content = types.Content(role="user", parts=[types.Part(text=user_prompt)])
 
     async def _consume():
         async for _event in runner.run_async(
@@ -187,6 +184,7 @@ def _parse_json(text: str) -> dict:
 # Phase 1: Entity Extraction
 # ---------------------------------------------------------------------------
 
+
 async def phase1_extract_entities(
     config: Configuration,
     skills: list[SkillData],
@@ -199,21 +197,23 @@ async def phase1_extract_entities(
 
     if total == 0:
         yield PipelineProgress(
-            phase="entity_extraction", step="skip",
+            phase="entity_extraction",
+            step="skip",
             detail=f"All {len(skills)} skills cached, skipping extraction",
             progress=1.0,
         )
         return
 
     yield PipelineProgress(
-        phase="entity_extraction", step="start",
+        phase="entity_extraction",
+        step="start",
         detail=f"Extracting entities from {total} skills ({len(skills) - total} cached)",
         progress=0.0,
     )
 
     conf_threshold, candidate_top_k, batch_size, max_concurrent = _conf(config)
     semaphore = asyncio.Semaphore(max_concurrent)
-    batches = [to_extract[i:i + batch_size] for i in range(0, total, batch_size)]
+    batches = [to_extract[i : i + batch_size] for i in range(0, total, batch_size)]
     completed = 0
 
     for batch in batches:
@@ -227,8 +227,11 @@ async def phase1_extract_entities(
         ]
 
         responses = await _run_agent_batch(
-            build_entity_extractor, config, prompts,
-            KEY_ENTITY_RESULT, semaphore,
+            build_entity_extractor,
+            config,
+            prompts,
+            KEY_ENTITY_RESULT,
+            semaphore,
         )
 
         for skill, response in zip(batch, responses):
@@ -250,13 +253,15 @@ async def phase1_extract_entities(
 
         completed += len(batch)
         yield PipelineProgress(
-            phase="entity_extraction", step="progress",
+            phase="entity_extraction",
+            step="progress",
             detail=f"Extracted {completed}/{total} skills",
             progress=completed / total,
         )
 
     yield PipelineProgress(
-        phase="entity_extraction", step="done",
+        phase="entity_extraction",
+        step="done",
         detail=f"Entity extraction complete for {total} skills",
         progress=1.0,
     )
@@ -265,6 +270,7 @@ async def phase1_extract_entities(
 # ---------------------------------------------------------------------------
 # Phase 2: Relationship Classification
 # ---------------------------------------------------------------------------
+
 
 async def phase2_classify_relationships(
     config: Configuration,
@@ -275,57 +281,51 @@ async def phase2_classify_relationships(
 ) -> AsyncIterator[PipelineProgress]:
     """Discover and classify relationships using the RelationshipClassifier ADK agent."""
     yield PipelineProgress(
-        phase="relationship_classification", step="candidates",
+        phase="relationship_classification",
+        step="candidates",
         detail="Finding candidate pairs via embeddings and shared entities",
         progress=0.0,
     )
 
     conf_threshold, candidate_top_k, _, _ = _conf(config)
     skill_map = {s.skill_id: s for s in skills}
-    candidate_pairs = await asyncio.to_thread(
-        _find_candidate_pairs, skills, cache, vs, skill_map, candidate_top_k
-    )
+    candidate_pairs = await asyncio.to_thread(_find_candidate_pairs, skills, cache, vs, skill_map, candidate_top_k)
 
     pairs_to_classify = [
-        pair for pair in candidate_pairs
-        if pair[0] in changed_ids
-        or pair[1] in changed_ids
-        or edge_key(pair[0], pair[1]) not in cache.edges
+        pair
+        for pair in candidate_pairs
+        if pair[0] in changed_ids or pair[1] in changed_ids or edge_key(pair[0], pair[1]) not in cache.edges
     ]
 
     yield PipelineProgress(
-        phase="relationship_classification", step="classify",
+        phase="relationship_classification",
+        step="classify",
         detail=f"Found {len(candidate_pairs)} candidate pairs, classifying {len(pairs_to_classify)} new/changed",
         progress=0.1,
     )
 
     if not pairs_to_classify:
         yield PipelineProgress(
-            phase="relationship_classification", step="done",
+            phase="relationship_classification",
+            step="done",
             detail="All relationships cached",
             progress=1.0,
         )
         return
 
     conf_threshold, _, batch_size, max_concurrent = _conf(config)
-    batches = [
-        pairs_to_classify[i:i + batch_size]
-        for i in range(0, len(pairs_to_classify), batch_size)
-    ]
+    batches = [pairs_to_classify[i : i + batch_size] for i in range(0, len(pairs_to_classify), batch_size)]
     completed = 0
 
     for batch in batches:
         prompt_parts = _build_pair_prompts(batch, skill_map, cache)
-        full_prompt = (
-            f"Classify the relationships for these {len(prompt_parts)} skill pairs:\n\n"
-            + "\n".join(prompt_parts)
+        full_prompt = f"Classify the relationships for these {len(prompt_parts)} skill pairs:\n\n" + "\n".join(
+            prompt_parts
         )
 
         try:
             agent = build_relationship_classifier(config)
-            response = await _run_agent_once(
-                agent, full_prompt, KEY_RELATIONSHIP_RESULT
-            )
+            response = await _run_agent_once(agent, full_prompt, KEY_RELATIONSHIP_RESULT)
             data = _parse_json(response)
             result = BatchClassificationResult(**data)
 
@@ -347,13 +347,15 @@ async def phase2_classify_relationships(
 
         completed += len(batch)
         yield PipelineProgress(
-            phase="relationship_classification", step="progress",
+            phase="relationship_classification",
+            step="progress",
             detail=f"Classified {completed}/{len(pairs_to_classify)} pairs",
             progress=0.1 + 0.9 * (completed / len(pairs_to_classify)),
         )
 
     yield PipelineProgress(
-        phase="relationship_classification", step="done",
+        phase="relationship_classification",
+        step="done",
         detail=f"Relationship classification complete: {len(cache.edges)} total edges cached",
         progress=1.0,
     )
@@ -381,7 +383,7 @@ def _find_candidate_pairs(
         sim_matrix = np.dot(embeddings, embeddings.T)
 
         for i, skill in enumerate(skills):
-            top_indices = np.argsort(sim_matrix[i])[::-1][1:top_k + 1]
+            top_indices = np.argsort(sim_matrix[i])[::-1][1 : top_k + 1]
             for j_idx in top_indices:
                 j = int(j_idx)
                 candidate_set.add(tuple(sorted([skill.skill_id, skills[j].skill_id])))
@@ -453,6 +455,7 @@ def _build_pair_prompts(
 # Phase 3: Community Detection & Summarization
 # ---------------------------------------------------------------------------
 
+
 async def phase3_communities(
     config: Configuration,
     skills: list[SkillData],
@@ -460,7 +463,8 @@ async def phase3_communities(
 ) -> AsyncIterator[PipelineProgress]:
     """Detect communities via Louvain and summarize using the CommunitySummarizer ADK agent."""
     yield PipelineProgress(
-        phase="community_detection", step="start",
+        phase="community_detection",
+        step="start",
         detail="Running Louvain community detection",
         progress=0.0,
     )
@@ -475,7 +479,8 @@ async def phase3_communities(
     assignment = await asyncio.to_thread(detect_communities, nodes, edges)
 
     yield PipelineProgress(
-        phase="community_detection", step="detected",
+        phase="community_detection",
+        step="detected",
         detail=f"Found {assignment.num_communities} communities (modularity={assignment.modularity:.3f})",
         progress=0.3,
     )
@@ -487,28 +492,25 @@ async def phase3_communities(
 
     if not prompts:
         yield PipelineProgress(
-            phase="community_detection", step="done",
+            phase="community_detection",
+            step="done",
             detail="No communities large enough to summarize",
             progress=1.0,
         )
         return
 
     yield PipelineProgress(
-        phase="community_detection", step="summarize",
+        phase="community_detection",
+        step="summarize",
         detail=f"Summarizing {len(prompts)} communities",
         progress=0.4,
     )
 
-    full_prompt = (
-        f"Summarize these {len(prompts)} skill communities:\n\n"
-        + "\n\n".join(prompts)
-    )
+    full_prompt = f"Summarize these {len(prompts)} skill communities:\n\n" + "\n\n".join(prompts)
 
     try:
         agent = build_community_summarizer(config)
-        response = await _run_agent_once(
-            agent, full_prompt, KEY_COMMUNITY_RESULT
-        )
+        response = await _run_agent_once(agent, full_prompt, KEY_COMMUNITY_RESULT)
         data = _parse_json(response)
         result = CommunityBatchResult(**data)
 
@@ -522,7 +524,8 @@ async def phase3_communities(
     cache.communities["_modularity"] = assignment.modularity
 
     yield PipelineProgress(
-        phase="community_detection", step="done",
+        phase="community_detection",
+        step="done",
         detail=f"Community detection and summarization complete: {assignment.num_communities} communities",
         progress=1.0,
     )
@@ -546,13 +549,9 @@ def _build_community_prompts(
                 continue
             ent = cache.skills.get(sid, CachedSkill("", {})).entities
             member_info.append(
-                f"  - {sid}: {s.name} — {s.description[:100]}"
-                f" [tech: {', '.join(ent.get('technologies', [])[:5])}]"
+                f"  - {sid}: {s.name} — {s.description[:100]} [tech: {', '.join(ent.get('technologies', [])[:5])}]"
             )
-        prompts.append(
-            f"Community {comm_id} ({len(member_ids)} members):\n"
-            + "\n".join(member_info)
-        )
+        prompts.append(f"Community {comm_id} ({len(member_ids)} members):\n" + "\n".join(member_info))
         comm_ids.append(comm_id)
     return prompts, comm_ids
 
@@ -560,6 +559,7 @@ def _build_community_prompts(
 # ---------------------------------------------------------------------------
 # Phase 4: Graph Validation
 # ---------------------------------------------------------------------------
+
 
 async def phase4_validate(
     config: Configuration,
@@ -572,7 +572,8 @@ async def phase4_validate(
     ``detail`` as ``"score:XX.X|..."`` so the orchestrator can extract it.
     """
     yield PipelineProgress(
-        phase="validation", step="start",
+        phase="validation",
+        step="start",
         detail="Validating graph quality",
         progress=0.0,
     )
@@ -580,22 +581,22 @@ async def phase4_validate(
     stats_prompt = _build_validation_prompt(skills, cache)
 
     yield PipelineProgress(
-        phase="validation", step="analyzing",
+        phase="validation",
+        step="analyzing",
         detail="LLM analyzing graph quality",
         progress=0.3,
     )
 
     try:
         agent = build_graph_validator(config)
-        response = await _run_agent_once(
-            agent, stats_prompt, KEY_VALIDATION_RESULT
-        )
+        response = await _run_agent_once(agent, stats_prompt, KEY_VALIDATION_RESULT)
         data = _parse_json(response)
         report = GraphQualityReport(**data)
         logger.info("Graph quality score: %.1f/100", report.overall_score)
 
         yield PipelineProgress(
-            phase="validation", step="done",
+            phase="validation",
+            step="done",
             detail=(
                 f"score:{report.overall_score}|"
                 f"Quality score: {report.overall_score:.0f}/100 — "
@@ -606,7 +607,8 @@ async def phase4_validate(
     except Exception as exc:
         logger.warning("Graph validation failed: %s", exc)
         yield PipelineProgress(
-            phase="validation", step="done",
+            phase="validation",
+            step="done",
             detail=f"Validation completed with errors: {exc}",
             progress=1.0,
         )
@@ -643,9 +645,7 @@ def _build_validation_prompt(
         if ce.confidence < _LOW_CONFIDENCE_THRESHOLD:
             low_confidence += 1
         if len(edge_samples) < _MAX_EDGE_SAMPLES:
-            edge_samples.append(
-                f"  {a_id} --[{ce.relationship} conf={ce.confidence:.2f}]--> {b_id}: {ce.description}"
-            )
+            edge_samples.append(f"  {a_id} --[{ce.relationship} conf={ce.confidence:.2f}]--> {b_id}: {ce.description}")
 
     isolated = sorted(skill_ids - connected_ids)
     total_edges = len(cache.edges)

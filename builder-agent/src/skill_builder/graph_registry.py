@@ -57,14 +57,16 @@ def scan_registry(registry_dir: str) -> list[SkillData]:
             try:
                 raw = skill_file.read_text()
                 name, desc = parse_frontmatter(raw)
-                skills.append(SkillData(
-                    skill_id=f"{plugin_name}-{entry.name}",
-                    plugin=plugin_name,
-                    name=name or entry.name,
-                    description=desc,
-                    body=extract_body(raw)[:3000],
-                    raw_content=raw,
-                ))
+                skills.append(
+                    SkillData(
+                        skill_id=f"{plugin_name}-{entry.name}",
+                        plugin=plugin_name,
+                        name=name or entry.name,
+                        description=desc,
+                        body=extract_body(raw)[:3000],
+                        raw_content=raw,
+                    )
+                )
             except Exception as exc:
                 logger.warning("Failed to read %s: %s", skill_file, exc)
 
@@ -103,10 +105,10 @@ def extract_body(content: str) -> str:
         idx = body.find("---", 3)
         if idx == -1:
             return body[3:].strip()
-        body = body[idx + 3:].strip()
+        body = body[idx + 3 :].strip()
     if body.startswith("---"):
         idx = body.find("---", 3)
         if idx == -1:
             return body[3:].strip()
-        body = body[idx + 3:].strip()
+        body = body[idx + 3 :].strip()
     return body

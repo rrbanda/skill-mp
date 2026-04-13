@@ -116,18 +116,13 @@ class SkillVectorSearch:
         ]
         embeddings = self._model.encode(texts, normalize_embeddings=True).tolist()
 
-        batch_params = [
-            {"id": r["id"], "embedding": emb}
-            for r, emb in zip(records, embeddings)
-        ]
+        batch_params = [{"id": r["id"], "embedding": emb} for r, emb in zip(records, embeddings)]
 
         with self._driver.session(database=self._database) as session:
             for chunk_start in range(0, len(batch_params), 50):
-                chunk = batch_params[chunk_start:chunk_start + 50]
+                chunk = batch_params[chunk_start : chunk_start + 50]
                 session.run(
-                    "UNWIND $batch AS item "
-                    "MATCH (s:Skill {id: item.id}) "
-                    "SET s.embedding = item.embedding",
+                    "UNWIND $batch AS item MATCH (s:Skill {id: item.id}) SET s.embedding = item.embedding",
                     {"batch": chunk},
                 )
 
@@ -216,9 +211,7 @@ class SkillVectorSearch:
                 for r in result
             ]
 
-    def search_with_neighbors(
-        self, query: str, top_k: int = 5
-    ) -> list[SimilarSkill]:
+    def search_with_neighbors(self, query: str, top_k: int = 5) -> list[SimilarSkill]:
         """Vector search + one-hop graph traversal for richer context."""
         query_embedding = self.embed_text(query)
 
@@ -259,9 +252,7 @@ class SkillVectorSearch:
                 for r in result
             ]
 
-    def _build_embedding_text(
-        self, label: str, description: str, body: str, max_chars: int | None = None
-    ) -> str:
+    def _build_embedding_text(self, label: str, description: str, body: str, max_chars: int | None = None) -> str:
         """Build the text to embed from skill components.
 
         Prioritizes name and description (always included), then truncates

@@ -40,6 +40,7 @@ def init_tracing() -> None:
     if otlp_endpoint:
         try:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
             exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
             _provider.add_span_processor(BatchSpanProcessor(exporter))
             logger.info("OTLP tracing enabled: %s", otlp_endpoint)

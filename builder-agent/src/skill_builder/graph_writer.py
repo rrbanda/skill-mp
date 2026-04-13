@@ -17,10 +17,16 @@ from skill_builder.graph_registry import SkillData
 logger = logging.getLogger(__name__)
 
 _ALL_RELATIONSHIP_TYPES = [
-    "COMPLEMENTS", "DEPENDS_ON", "ALTERNATIVE_TO",
-    "EXTENDS", "PRECEDES",
-    "CROSS_LANGUAGE", "USES_AUTH", "SAME_DOMAIN",
-    "SAME_PLUGIN", "RELATES_TO",
+    "COMPLEMENTS",
+    "DEPENDS_ON",
+    "ALTERNATIVE_TO",
+    "EXTENDS",
+    "PRECEDES",
+    "CROSS_LANGUAGE",
+    "USES_AUTH",
+    "SAME_DOMAIN",
+    "SAME_PLUGIN",
+    "RELATES_TO",
     "MEMBER_OF",
 ]
 
@@ -62,10 +68,7 @@ def write_graph_to_neo4j(
 
 
 def _ensure_constraints(session: neo4j.Session) -> None:
-    session.run(
-        "CREATE CONSTRAINT skill_id IF NOT EXISTS "
-        "FOR (s:Skill) REQUIRE s.id IS UNIQUE"
-    )
+    session.run("CREATE CONSTRAINT skill_id IF NOT EXISTS FOR (s:Skill) REQUIRE s.id IS UNIQUE")
 
 
 def _upsert_skills(
@@ -74,20 +77,22 @@ def _upsert_skills(
     cache: GraphCache,
 ) -> None:
     for batch_start in range(0, len(skills), 50):
-        batch = skills[batch_start:batch_start + 50]
+        batch = skills[batch_start : batch_start + 50]
         skill_params = []
         for s in batch:
             ent = cache.skills.get(s.skill_id, CachedSkill("", {})).entities
-            skill_params.append({
-                "id": s.skill_id,
-                "label": s.name.replace("-", " ").title(),
-                "plugin": s.plugin,
-                "description": s.description,
-                "body": s.body,
-                "domain": ent.get("domain", ""),
-                "technologies": ent.get("technologies", []),
-                "patterns": ent.get("patterns", []),
-            })
+            skill_params.append(
+                {
+                    "id": s.skill_id,
+                    "label": s.name.replace("-", " ").title(),
+                    "plugin": s.plugin,
+                    "description": s.description,
+                    "body": s.body,
+                    "domain": ent.get("domain", ""),
+                    "technologies": ent.get("technologies", []),
+                    "patterns": ent.get("patterns", []),
+                }
+            )
         session.run(
             """
             UNWIND $skills AS skill
@@ -126,13 +131,15 @@ def _write_edges(
         if a_id not in valid_ids or b_id not in valid_ids:
             continue
 
-        edge_params_by_type.setdefault(ce.relationship, []).append({
-            "sourceId": a_id,
-            "targetId": b_id,
-            "confidence": ce.confidence,
-            "description": ce.description,
-            "direction": ce.direction,
-        })
+        edge_params_by_type.setdefault(ce.relationship, []).append(
+            {
+                "sourceId": a_id,
+                "targetId": b_id,
+                "confidence": ce.confidence,
+                "description": ce.description,
+                "direction": ce.direction,
+            }
+        )
 
     allowed_rel_types = set(_ALL_RELATIONSHIP_TYPES)
 
@@ -142,7 +149,7 @@ def _write_edges(
             logger.warning("Skipping unknown relationship type from LLM: %r", rel_type)
             continue
         for batch_start in range(0, len(params), 100):
-            batch = params[batch_start:batch_start + 100]
+            batch = params[batch_start : batch_start + 100]
             session.run(
                 f"""
                 UNWIND $edges AS edge
@@ -174,10 +181,7 @@ def _write_communities(
     valid_ids = {s.skill_id for s in skills}
     community_count = 0
 
-    comm_summaries = {
-        k: v for k, v in cache.communities.items()
-        if not k.startswith("_") and isinstance(v, dict)
-    }
+    comm_summaries = {k: v for k, v in cache.communities.items() if not k.startswith("_") and isinstance(v, dict)}
     for comm_id_str, summary in comm_summaries.items():
         try:
             comm_id_int = int(comm_id_str)
@@ -205,14 +209,10 @@ def _write_communities(
         )
         community_count += 1
 
-    membership_params = [
-        {"skillId": sid, "commId": cid}
-        for sid, cid in partition.items()
-        if sid in valid_ids
-    ]
+    membership_params = [{"skillId": sid, "commId": cid} for sid, cid in partition.items() if sid in valid_ids]
     if membership_params:
         for batch_start in range(0, len(membership_params), 100):
-            batch = membership_params[batch_start:batch_start + 100]
+            batch = membership_params[batch_start : batch_start + 100]
             session.run(
                 """
                 UNWIND $members AS m

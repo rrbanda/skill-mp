@@ -42,9 +42,7 @@ def detect_communities(
     try:
         import community as community_louvain
     except ImportError:
-        logger.warning(
-            "python-louvain not installed, falling back to networkx greedy_modularity"
-        )
+        logger.warning("python-louvain not installed, falling back to networkx greedy_modularity")
         return _fallback_detection(nodes, edges)
 
     graph = _build_graph(nodes, edges)
@@ -57,7 +55,10 @@ def detect_communities(
     num_communities = len(set(partition.values()))
     logger.info(
         "Louvain detected %d communities (modularity=%.3f) from %d nodes, %d edges",
-        num_communities, modularity, graph.number_of_nodes(), graph.number_of_edges(),
+        num_communities,
+        modularity,
+        graph.number_of_nodes(),
+        graph.number_of_edges(),
     )
     return CommunityAssignment(
         partition=partition,
@@ -66,9 +67,7 @@ def detect_communities(
     )
 
 
-def _fallback_detection(
-    nodes: list[str], edges: list[tuple[str, str, float]]
-) -> CommunityAssignment:
+def _fallback_detection(nodes: list[str], edges: list[tuple[str, str, float]]) -> CommunityAssignment:
     """Fallback using networkx's built-in greedy modularity communities."""
     graph = _build_graph(nodes, edges)
     if graph.number_of_nodes() == 0:
@@ -89,7 +88,8 @@ def _fallback_detection(
 
     logger.info(
         "Greedy modularity detected %d communities (modularity=%.3f)",
-        num_communities, modularity,
+        num_communities,
+        modularity,
     )
     return CommunityAssignment(
         partition=partition,
@@ -108,9 +108,7 @@ def get_community_members(
     return members
 
 
-def _build_graph(
-    nodes: list[str], edges: list[tuple[str, str, float]]
-) -> nx.Graph:
+def _build_graph(nodes: list[str], edges: list[tuple[str, str, float]]) -> nx.Graph:
     """Build an undirected weighted networkx graph."""
     graph = nx.Graph()
     graph.add_nodes_from(nodes)

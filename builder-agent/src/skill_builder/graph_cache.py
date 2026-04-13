@@ -93,7 +93,8 @@ def load_cache(cache_path: pathlib.Path) -> GraphCache:
         cache.communities = raw.get("communities", {})
         logger.info(
             "Loaded cache: %d skills, %d edges",
-            len(cache.skills), len(cache.edges),
+            len(cache.skills),
+            len(cache.edges),
         )
         return cache
     except Exception as exc:
@@ -153,10 +154,7 @@ def get_changed_skills(
         del cache.skills[sid]
 
     if removed:
-        stale_edges = [
-            ek for ek in cache.edges
-            if any(part in removed for part in ek.split("|"))
-        ]
+        stale_edges = [ek for ek in cache.edges if any(part in removed for part in ek.split("|"))]
         for ek in stale_edges:
             del cache.edges[ek]
         logger.info("Pruned %d removed skills and %d stale edges from cache", len(removed), len(stale_edges))

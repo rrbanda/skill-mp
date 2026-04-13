@@ -96,27 +96,32 @@ def build_pipeline(
         """
         try:
             results = vector_search.search_with_neighbors(query, top_k=top_k)
-            return json.dumps({
-                "status": "ok",
-                "results": [
-                    {
-                        "id": r.id,
-                        "label": r.label,
-                        "plugin": r.plugin,
-                        "description": r.description,
-                        "score": round(r.score, 3),
-                        "body_preview": r.body[:500] if r.body else "",
-                    }
-                    for r in results
-                ],
-            }, indent=2)
+            return json.dumps(
+                {
+                    "status": "ok",
+                    "results": [
+                        {
+                            "id": r.id,
+                            "label": r.label,
+                            "plugin": r.plugin,
+                            "description": r.description,
+                            "score": round(r.score, 3),
+                            "body_preview": r.body[:500] if r.body else "",
+                        }
+                        for r in results
+                    ],
+                },
+                indent=2,
+            )
         except Exception as exc:
             logger.warning("search_similar_skills failed: %s", exc)
-            return json.dumps({
-                "status": "error",
-                "message": f"Search unavailable: {type(exc).__name__}",
-                "results": [],
-            })
+            return json.dumps(
+                {
+                    "status": "error",
+                    "message": f"Search unavailable: {type(exc).__name__}",
+                    "results": [],
+                }
+            )
 
     search_tool = FunctionTool(func=search_similar_skills)
 
@@ -158,10 +163,7 @@ def build_pipeline(
         name="SkillRefinementLoop",
         sub_agents=[skill_generator, skill_validator],
         max_iterations=max_iterations,
-        description=(
-            f"Iteratively generates and validates a SKILL.md file, "
-            f"up to {max_iterations} attempts."
-        ),
+        description=(f"Iteratively generates and validates a SKILL.md file, up to {max_iterations} attempts."),
     )
 
     root_agent = SequentialAgent(

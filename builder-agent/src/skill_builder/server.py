@@ -166,9 +166,7 @@ def _evict_expired_sessions() -> int:
     return len(expired)
 
 
-async def _run_pipeline(
-    user_input: str, context_id: str
-):
+async def _run_pipeline(user_input: str, context_id: str):
     """Run the ADK pipeline and yield SSE events for each agent step."""
     runner = _get_runner()
     config = _get_config()
@@ -191,12 +189,8 @@ async def _run_pipeline(
 
     async def _pipeline_iter():
         nonlocal current_agent
-        with tracer.start_as_current_span(
-            "pipeline.run", attributes={"context_id": context_id}
-        ):
-            async for event in runner.run_async(
-                user_id=context_id, session_id=session_id, new_message=content
-            ):
+        with tracer.start_as_current_span("pipeline.run", attributes={"context_id": context_id}):
+            async for event in runner.run_async(user_id=context_id, session_id=session_id, new_message=content):
                 agent_name = getattr(event, "author", None)
                 if agent_name and agent_name != current_agent:
                     current_agent = agent_name
@@ -210,19 +204,23 @@ async def _run_pipeline(
                         if hasattr(part, "function_call") and part.function_call:
                             yield {
                                 "event": "tool_call",
-                                "data": json.dumps({
-                                    "agent": current_agent,
-                                    "tool": part.function_call.name,
-                                    "args": part.function_call.args,
-                                }),
+                                "data": json.dumps(
+                                    {
+                                        "agent": current_agent,
+                                        "tool": part.function_call.name,
+                                        "args": part.function_call.args,
+                                    }
+                                ),
                             }
                         if hasattr(part, "text") and part.text:
                             yield {
                                 "event": "agent_output",
-                                "data": json.dumps({
-                                    "agent": current_agent,
-                                    "text": part.text,
-                                }),
+                                "data": json.dumps(
+                                    {
+                                        "agent": current_agent,
+                                        "text": part.text,
+                                    }
+                                ),
                             }
 
     timed_out = False
@@ -242,18 +240,18 @@ async def _run_pipeline(
         }
         return
 
-    session = await runner.session_service.get_session(
-        app_name=APP_NAME, user_id=context_id, session_id=session_id
-    )
+    session = await runner.session_service.get_session(app_name=APP_NAME, user_id=context_id, session_id=session_id)
     generated_skill = session.state.get(KEY_GENERATED_SKILL, "")
     validation = session.state.get(KEY_VALIDATION, "")
 
     yield {
         "event": "complete",
-        "data": json.dumps({
-            "skill_content": generated_skill,
-            "validation": validation,
-        }),
+        "data": json.dumps(
+            {
+                "skill_content": generated_skill,
+                "validation": validation,
+            }
+        ),
     }
 
 
@@ -270,9 +268,7 @@ async def generate(request: Request) -> EventSourceResponse | JSONResponse:
     body = await request.json()
     description = body.get("description", "").strip()
     if not description:
-        return JSONResponse(
-            {"error": "description is required"}, status_code=400
-        )
+        return JSONResponse({"error": "description is required"}, status_code=400)
 
     context_id = body.get("context_id", f"builder-{id(request)}")
     _evict_expired_sessions()
@@ -308,9 +304,7 @@ async def refine(request: Request) -> EventSourceResponse | JSONResponse:
     context_id = body.get("context_id", "")
 
     if not feedback or not context_id:
-        return JSONResponse(
-            {"error": "feedback and context_id are required"}, status_code=400
-        )
+        return JSONResponse({"error": "feedback and context_id are required"}, status_code=400)
 
     refinement_prompt = (
         f"The user reviewed the generated skill and has this feedback:\n\n"
@@ -429,13 +423,15 @@ async def save(request: Request) -> JSONResponse:
         logger.warning("Immediate embedding failed (will embed on next startup): %s", exc)
         embed_info["error"] = _sanitize_error(exc)
 
-    return JSONResponse({
-        "ok": True,
-        "path": str(skill_dir.relative_to(registry_dir)),
-        "file": str(skill_file.relative_to(registry_dir)),
-        "git": git_info,
-        "embedding": embed_info,
-    })
+    return JSONResponse(
+        {
+            "ok": True,
+            "path": str(skill_dir.relative_to(registry_dir)),
+            "file": str(skill_file.relative_to(registry_dir)),
+            "git": git_info,
+            "embedding": embed_info,
+        }
+    )
 
 
 async def health(request: Request) -> JSONResponse:
@@ -458,6 +454,7 @@ async def health(request: Request) -> JSONResponse:
 
     try:
         import litellm
+
         await asyncio.wait_for(
             asyncio.to_thread(
                 litellm.completion,
@@ -509,31 +506,36 @@ async def graph_build(request: Request) -> EventSourceResponse | JSONResponse:
     async def event_stream():
         try:
             async for event in run_graph_pipeline(
-                config, vs,
+                config,
+                vs,
                 cache_path=config.graph_cache_path or None,
             ):
                 if isinstance(event, PipelineResult):
                     yield {
                         "event": "complete",
-                        "data": json.dumps({
-                            "nodes": event.nodes,
-                            "edges": event.edges,
-                            "communities": event.communities,
-                            "quality_score": event.quality_score,
-                            "duration_ms": event.duration_ms,
-                            "phases_completed": event.phases_completed,
-                            "errors": event.errors,
-                        }),
+                        "data": json.dumps(
+                            {
+                                "nodes": event.nodes,
+                                "edges": event.edges,
+                                "communities": event.communities,
+                                "quality_score": event.quality_score,
+                                "duration_ms": event.duration_ms,
+                                "phases_completed": event.phases_completed,
+                                "errors": event.errors,
+                            }
+                        ),
                     }
                 elif isinstance(event, PipelineProgress):
                     yield {
                         "event": "progress",
-                        "data": json.dumps({
-                            "phase": event.phase,
-                            "step": event.step,
-                            "detail": event.detail,
-                            "progress": round(event.progress, 3),
-                        }),
+                        "data": json.dumps(
+                            {
+                                "phase": event.phase,
+                                "step": event.step,
+                                "detail": event.detail,
+                                "progress": round(event.progress, 3),
+                            }
+                        ),
                     }
         except Exception as exc:
             logger.exception("GraphRAG pipeline error")
@@ -572,22 +574,25 @@ async def graph_update(request: Request) -> JSONResponse:
 
     try:
         result = await run_incremental_update(
-            config, vs,
+            config,
+            vs,
             skill_id=skill_id,
             skill_content=skill_content,
             plugin=plugin,
             skill_name=skill_name,
             cache_path=config.graph_cache_path or None,
         )
-        return JSONResponse({
-            "ok": True,
-            "nodes": result.nodes,
-            "edges": result.edges,
-            "communities": result.communities,
-            "duration_ms": result.duration_ms,
-            "phases_completed": result.phases_completed,
-            "errors": result.errors,
-        })
+        return JSONResponse(
+            {
+                "ok": True,
+                "nodes": result.nodes,
+                "edges": result.edges,
+                "communities": result.communities,
+                "duration_ms": result.duration_ms,
+                "phases_completed": result.phases_completed,
+                "errors": result.errors,
+            }
+        )
     except Exception as exc:
         logger.exception("Incremental graph update failed")
         return JSONResponse(
@@ -607,9 +612,7 @@ def _is_valid_name(name: str) -> bool:
     return all(c.isalnum() or c == "-" for c in name) and name == name.lower()
 
 
-def _update_marketplace_json(
-    registry_dir: pathlib.Path, plugin: str
-) -> pathlib.Path | None:
+def _update_marketplace_json(registry_dir: pathlib.Path, plugin: str) -> pathlib.Path | None:
     """Ensure the plugin exists in marketplace.json. Returns the file path if modified."""
     mp_file = registry_dir / "marketplace.json"
     if not mp_file.exists():
@@ -619,13 +622,15 @@ def _update_marketplace_json(
         data = json.loads(mp_file.read_text())
         existing_plugins = {p["name"] for p in data.get("plugins", [])}
         if plugin not in existing_plugins:
-            data["plugins"].append({
-                "name": plugin,
-                "source": f"./{plugin}",
-                "description": f"Skills in the {plugin} category",
-                "version": "1.0.0",
-                "tags": [plugin],
-            })
+            data["plugins"].append(
+                {
+                    "name": plugin,
+                    "source": f"./{plugin}",
+                    "description": f"Skills in the {plugin} category",
+                    "version": "1.0.0",
+                    "tags": [plugin],
+                }
+            )
             mp_file.write_text(json.dumps(data, indent=2) + "\n")
             return mp_file
     except Exception as exc:
@@ -664,6 +669,7 @@ async def on_shutdown():
         _vector_search = None
 
     from skill_builder.graph_writer import _driver_cache
+
     for uri, driver in list(_driver_cache.items()):
         try:
             driver.close()
@@ -721,7 +727,10 @@ def run():
 
     logger.info(
         "Starting skill-builder-agent on %s:%d (model=%s, neo4j=%s)",
-        config.host, config.port, config.llm_model, config.neo4j_uri,
+        config.host,
+        config.port,
+        config.llm_model,
+        config.neo4j_uri,
     )
 
     uvicorn.run(app, host=config.host, port=config.port)

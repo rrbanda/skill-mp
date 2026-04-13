@@ -18,10 +18,12 @@ import urllib.request
 def _generate(args: argparse.Namespace) -> int:
     """Generate a skill by sending a request to the builder agent."""
     url = f"{args.url}/generate"
-    payload = json.dumps({
-        "description": args.description,
-        "context_id": f"cli-{id(args)}",
-    }).encode()
+    payload = json.dumps(
+        {
+            "description": args.description,
+            "context_id": f"cli-{id(args)}",
+        }
+    ).encode()
 
     headers = {"Content-Type": "application/json"}
     if args.api_key:
@@ -136,11 +138,13 @@ def main() -> None:
         help="Natural language description of the skill to generate",
     )
     gen_parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output file path (default: stdout)",
     )
     gen_parser.add_argument(
-        "--timeout", "-t",
+        "--timeout",
+        "-t",
         type=int,
         default=180,
         help="Request timeout in seconds (default: 180)",
