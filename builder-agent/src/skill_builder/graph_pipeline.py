@@ -21,8 +21,8 @@ import asyncio
 import logging
 import pathlib
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator
 
 from skill_builder.configuration import Configuration
 from skill_builder.graph_cache import get_changed_skills, load_cache, save_cache

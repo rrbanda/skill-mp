@@ -47,17 +47,17 @@ def detect_communities(
         )
         return _fallback_detection(nodes, edges)
 
-    G = _build_graph(nodes, edges)
-    if G.number_of_nodes() == 0:
+    graph = _build_graph(nodes, edges)
+    if graph.number_of_nodes() == 0:
         return CommunityAssignment(partition={}, num_communities=0, modularity=0.0)
 
-    partition = community_louvain.best_partition(G, resolution=resolution)
-    modularity = community_louvain.modularity(partition, G)
+    partition = community_louvain.best_partition(graph, resolution=resolution)
+    modularity = community_louvain.modularity(partition, graph)
 
     num_communities = len(set(partition.values()))
     logger.info(
         "Louvain detected %d communities (modularity=%.3f) from %d nodes, %d edges",
-        num_communities, modularity, G.number_of_nodes(), G.number_of_edges(),
+        num_communities, modularity, graph.number_of_nodes(), graph.number_of_edges(),
     )
     return CommunityAssignment(
         partition=partition,
@@ -70,11 +70,11 @@ def _fallback_detection(
     nodes: list[str], edges: list[tuple[str, str, float]]
 ) -> CommunityAssignment:
     """Fallback using networkx's built-in greedy modularity communities."""
-    G = _build_graph(nodes, edges)
-    if G.number_of_nodes() == 0:
+    graph = _build_graph(nodes, edges)
+    if graph.number_of_nodes() == 0:
         return CommunityAssignment(partition={}, num_communities=0, modularity=0.0)
 
-    communities = nx.community.greedy_modularity_communities(G)
+    communities = nx.community.greedy_modularity_communities(graph)
     partition: dict[str, int] = {}
     for idx, comm in enumerate(communities):
         for node in comm:
@@ -84,7 +84,7 @@ def _fallback_detection(
         if node not in partition:
             partition[node] = len(communities)
 
-    modularity = nx.community.modularity(G, communities)
+    modularity = nx.community.modularity(graph, communities)
     num_communities = len(communities)
 
     logger.info(
@@ -112,9 +112,9 @@ def _build_graph(
     nodes: list[str], edges: list[tuple[str, str, float]]
 ) -> nx.Graph:
     """Build an undirected weighted networkx graph."""
-    G = nx.Graph()
-    G.add_nodes_from(nodes)
+    graph = nx.Graph()
+    graph.add_nodes_from(nodes)
     for src, tgt, weight in edges:
-        if src in G and tgt in G:
-            G.add_edge(src, tgt, weight=weight)
-    return G
+        if src in graph and tgt in graph:
+            graph.add_edge(src, tgt, weight=weight)
+    return graph

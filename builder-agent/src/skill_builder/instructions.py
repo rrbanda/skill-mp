@@ -87,7 +87,7 @@ the Agent Skills specification and quality standards.
 
 ### Frontmatter (MUST pass)
 - [ ] Has YAML frontmatter delimited by `---`
-- [ ] `name` field: 1-64 chars, lowercase letters/numbers/hyphens only, no leading/trailing hyphens, no consecutive hyphens
+- [ ] `name` field: 1-64 chars, lowercase letters/numbers/hyphens, no leading/trailing/consecutive hyphens
 - [ ] `description` field: 1-1024 chars, describes what AND when to use
 
 ### Structure (MUST pass)

@@ -134,11 +134,11 @@ def _write_edges(
             "direction": ce.direction,
         })
 
-    _ALLOWED_REL_TYPES = set(_ALL_RELATIONSHIP_TYPES)
+    allowed_rel_types = set(_ALL_RELATIONSHIP_TYPES)
 
     edge_count = 0
     for rel_type, params in edge_params_by_type.items():
-        if rel_type not in _ALLOWED_REL_TYPES:
+        if rel_type not in allowed_rel_types:
             logger.warning("Skipping unknown relationship type from LLM: %r", rel_type)
             continue
         for batch_start in range(0, len(params), 100):

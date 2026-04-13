@@ -10,11 +10,10 @@ Defines structured output schemas for each phase:
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
-
 
 # ---------------------------------------------------------------------------
 # Phase 1: Entity Extraction
@@ -64,7 +63,7 @@ class SkillEntityResult(BaseModel):
 # Phase 2: Relationship Classification
 # ---------------------------------------------------------------------------
 
-class RelationshipType(str, Enum):
+class RelationshipType(StrEnum):
     COMPLEMENTS = "COMPLEMENTS"
     DEPENDS_ON = "DEPENDS_ON"
     ALTERNATIVE_TO = "ALTERNATIVE_TO"

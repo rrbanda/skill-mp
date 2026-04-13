@@ -8,8 +8,8 @@ test.describe("Smoke Tests", () => {
 
   test("navigation links are visible", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /builder/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /skills/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Builder", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Skills", exact: true })).toBeVisible();
   });
 
   test("builder page renders", async ({ page }) => {

@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from google.adk.runners import InMemoryRunner
 from google.genai import types
@@ -312,7 +312,6 @@ async def phase2_classify_relationships(
         pairs_to_classify[i:i + batch_size]
         for i in range(0, len(pairs_to_classify), batch_size)
     ]
-    semaphore = asyncio.Semaphore(max_concurrent)
     completed = 0
 
     for batch in batches:
@@ -401,11 +400,11 @@ def _find_candidate_pairs(
         for term in all_terms:
             entity_index.setdefault(term, set()).add(sid)
 
-    MAX_PAIRS_PER_TERM = 50
+    max_pairs_per_term = 50
     for sids in entity_index.values():
         sid_list = [s for s in sids if s in skill_map]
-        if len(sid_list) > MAX_PAIRS_PER_TERM:
-            sid_list = sid_list[:MAX_PAIRS_PER_TERM]
+        if len(sid_list) > max_pairs_per_term:
+            sid_list = sid_list[:max_pairs_per_term]
         for i in range(len(sid_list)):
             for j in range(i + 1, len(sid_list)):
                 candidate_set.add(tuple(sorted([sid_list[i], sid_list[j]])))

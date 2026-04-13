@@ -18,8 +18,8 @@ from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import FunctionTool
 
-from skill_builder.configuration import Configuration
 from skill_builder import instructions
+from skill_builder.configuration import Configuration
 from skill_builder.vector_search import SkillVectorSearch
 
 logger = logging.getLogger(__name__)
