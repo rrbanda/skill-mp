@@ -11,4 +11,4 @@ USER 1001
 
 EXPOSE 8001
 
-CMD ["uv", "run", "--no-sync", "server"]
+CMD ["uv", "run", "--no-sync", "skill-builder-server"]
