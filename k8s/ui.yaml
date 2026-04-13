@@ -44,6 +44,8 @@ spec:
                 name: shared-config
             - configMapRef:
                 name: ui-config
+            - secretRef:
+                name: neo4j-credentials
           readinessProbe:
             httpGet:
               path: /

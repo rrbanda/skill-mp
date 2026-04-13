@@ -25,7 +25,7 @@ data:
   REGISTRY_DIR: "/app/registry"
   HOST: "0.0.0.0"
   PORT: "8001"
-  CORS_ORIGINS: "http://localhost:3000"  # Add your production URL
+  CORS_ORIGINS: "http://localhost:3000,http://ui:3000"
   PIPELINE_TIMEOUT_SECONDS: "120"
   UV_CACHE_DIR: "/tmp/uv-cache"
   HF_HOME: "/tmp/hf-cache"
