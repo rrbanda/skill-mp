@@ -9,6 +9,7 @@ Defines structured output schemas for each phase:
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal
 
@@ -160,12 +161,13 @@ class CommunitySummary(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize(cls, values: dict[str, Any]) -> dict[str, Any]:
-        import re
-
         cid = values.get("community_id", 0)
         if isinstance(cid, str):
             nums = re.findall(r"\d+", cid)
-            values["community_id"] = int(nums[0]) if nums else 0
+            if nums:
+                values["community_id"] = int(nums[0])
+            else:
+                values["community_id"] = hash(cid) % 10000
 
         for alias in ("members", "num_members", "size"):
             if alias in values and "member_count" not in values:
@@ -261,13 +263,20 @@ class GraphQualityReport(BaseModel):
 
         for list_field in ("issues", "recommendations"):
             items = values.get(list_field, [])
-            if items and isinstance(items[0], dict):
-                values[list_field] = [
-                    item.get("description", "")
-                    or item.get("issue", "")
-                    or item.get("recommendation", "")
-                    or str(item)
-                    for item in items
-                ]
+            if items:
+                normalized = []
+                for item in items:
+                    if isinstance(item, dict):
+                        normalized.append(
+                            item.get("description", "")
+                            or item.get("issue", "")
+                            or item.get("recommendation", "")
+                            or str(item)
+                        )
+                    elif isinstance(item, str):
+                        normalized.append(item)
+                    else:
+                        normalized.append(str(item))
+                values[list_field] = normalized
 
         return values

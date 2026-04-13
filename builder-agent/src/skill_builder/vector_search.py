@@ -48,6 +48,12 @@ class SkillVectorSearch:
     def close(self) -> None:
         self._driver.close()
 
+    def check_connectivity(self) -> bool:
+        """Verify the Neo4j connection is alive. Returns True on success."""
+        with self._driver.session(database=self._database) as session:
+            session.run("RETURN 1")
+        return True
+
     def _ensure_vector_index(self) -> None:
         """Create the vector index on Skill.embedding if it doesn't exist."""
         with self._driver.session(database=self._database) as session:
@@ -72,9 +78,17 @@ class SkillVectorSearch:
         """Generate an embedding vector for the given text."""
         return self._model.encode(text, normalize_embeddings=True).tolist()
 
+    def batch_encode(self, texts: list[str]):
+        """Encode multiple texts into a normalized embedding matrix.
+
+        Returns a numpy ndarray of shape (len(texts), dimensions).
+        """
+        return self._model.encode(texts, normalize_embeddings=True)
+
     def embed_all_skills(self) -> int:
         """Generate and store embeddings for all Skill nodes that lack them.
 
+        Uses batch encoding and a single UNWIND query instead of per-skill sessions.
         Returns the number of skills updated.
         """
         with self._driver.session(database=self._database) as session:
@@ -92,24 +106,33 @@ class SkillVectorSearch:
             logger.info("All skills already have embeddings")
             return 0
 
-        count = 0
-        for record in records:
-            text = self._build_embedding_text(
-                label=record["label"] or "",
-                description=record["desc"] or "",
-                body=record["body"] or "",
+        texts = [
+            self._build_embedding_text(
+                label=r["label"] or "",
+                description=r["desc"] or "",
+                body=r["body"] or "",
             )
-            embedding = self.embed_text(text)
+            for r in records
+        ]
+        embeddings = self._model.encode(texts, normalize_embeddings=True).tolist()
 
-            with self._driver.session(database=self._database) as session:
+        batch_params = [
+            {"id": r["id"], "embedding": emb}
+            for r, emb in zip(records, embeddings)
+        ]
+
+        with self._driver.session(database=self._database) as session:
+            for chunk_start in range(0, len(batch_params), 50):
+                chunk = batch_params[chunk_start:chunk_start + 50]
                 session.run(
-                    "MATCH (s:Skill {id: $id}) SET s.embedding = $embedding",
-                    {"id": record["id"], "embedding": embedding},
+                    "UNWIND $batch AS item "
+                    "MATCH (s:Skill {id: item.id}) "
+                    "SET s.embedding = item.embedding",
+                    {"batch": chunk},
                 )
-            count += 1
 
-        logger.info("Embedded %d skills", count)
-        return count
+        logger.info("Embedded %d skills", len(records))
+        return len(records)
 
     def embed_skill(
         self,
@@ -235,49 +258,6 @@ class SkillVectorSearch:
                 )
                 for r in result
             ]
-
-    def find_candidates(
-        self, skill_id: str, top_k: int = 15
-    ) -> list[SimilarSkill]:
-        """Find top-k candidate skills similar to a given skill by its stored embedding."""
-        with self._driver.session(database=self._database) as session:
-            result = session.run(
-                "MATCH (s:Skill {id: $id}) RETURN s.embedding AS embedding",
-                {"id": skill_id},
-            )
-            record = result.single()
-
-        if not record or record["embedding"] is None:
-            return []
-
-        embedding = record["embedding"]
-        with self._driver.session(database=self._database) as session:
-            result = session.run(
-                f"""
-                CALL db.index.vector.queryNodes('{self._index_name}', $topK, $queryVector)
-                YIELD node, score
-                WHERE node.id <> $excludeId
-                RETURN node.id AS id,
-                       node.label AS label,
-                       node.plugin AS plugin,
-                       node.description AS description,
-                       node.body AS body,
-                       score
-                ORDER BY score DESC
-                """,
-                {"topK": top_k + 1, "queryVector": embedding, "excludeId": skill_id},
-            )
-            return [
-                SimilarSkill(
-                    id=r["id"],
-                    label=r["label"] or "",
-                    plugin=r["plugin"] or "",
-                    description=r["description"] or "",
-                    body=r["body"] or "",
-                    score=float(r["score"]),
-                )
-                for r in result
-            ][:top_k]
 
     def _build_embedding_text(
         self, label: str, description: str, body: str, max_chars: int | None = None

@@ -73,11 +73,19 @@ def scan_registry(registry_dir: str) -> list[SkillData]:
 
 
 def parse_frontmatter(content: str) -> tuple[str, str]:
-    """Extract name and description from the first YAML frontmatter block."""
+    """Extract name and description from the first YAML frontmatter block.
+
+    Returns ("", "") for content without valid frontmatter instead of raising.
+    """
     if not content.startswith("---"):
         return "", ""
-    end = content.index("---", 3)
-    fm = yaml.safe_load(content[3:end])
+    end = content.find("---", 3)
+    if end == -1:
+        return "", ""
+    try:
+        fm = yaml.safe_load(content[3:end])
+    except yaml.YAMLError:
+        return "", ""
     if not isinstance(fm, dict):
         return "", ""
     raw_name = fm.get("name", "")
@@ -86,12 +94,19 @@ def parse_frontmatter(content: str) -> tuple[str, str]:
 
 
 def extract_body(content: str) -> str:
-    """Return the markdown body after stripping frontmatter block(s)."""
+    """Return the markdown body after stripping frontmatter block(s).
+
+    Uses find() instead of index() to avoid ValueError on malformed content.
+    """
     body = content
     if body.startswith("---"):
-        idx = body.index("---", 3)
+        idx = body.find("---", 3)
+        if idx == -1:
+            return body[3:].strip()
         body = body[idx + 3:].strip()
     if body.startswith("---"):
-        idx = body.index("---", 3)
+        idx = body.find("---", 3)
+        if idx == -1:
+            return body[3:].strip()
         body = body[idx + 3:].strip()
     return body

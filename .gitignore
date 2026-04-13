@@ -23,6 +23,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Never commit real secrets
+k8s/secrets.yaml
+
 # Neo4j
 neo4j_data/
 

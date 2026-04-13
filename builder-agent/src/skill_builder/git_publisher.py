@@ -104,7 +104,7 @@ class GitPublisher:
             try:
                 self._run("pull", "--rebase", self._remote, self._branch, check=True)
             except subprocess.CalledProcessError as exc:
-                logger.warning("git pull --rebase failed: %s", exc.stderr.strip())
+                logger.warning("git pull --rebase failed: %s", (exc.stderr or "").strip())
 
         for f in files_to_stage:
             self._run("add", f)
@@ -131,7 +131,7 @@ class GitPublisher:
             except subprocess.CalledProcessError as exc:
                 logger.warning(
                     "Git push failed (commit %s saved locally): %s",
-                    sha, exc.stderr.strip(),
+                    sha, (exc.stderr or "").strip(),
                 )
 
         return PublishResult(

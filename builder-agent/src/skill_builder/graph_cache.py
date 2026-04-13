@@ -136,12 +136,29 @@ def get_changed_skills(
     cache: GraphCache,
     current_skills: dict[str, str],
 ) -> set[str]:
-    """Return skill IDs whose content has changed since last cache."""
+    """Return skill IDs whose content has changed since last cache.
+
+    Also prunes cache entries (skills and edges) for skills that no longer
+    exist in the registry, preventing stale data from persisting.
+    """
     changed: set[str] = set()
     for sid, raw_content in current_skills.items():
         h = content_hash(raw_content)
         cached = cache.skills.get(sid)
         if cached is None or cached.content_hash != h:
             changed.add(sid)
+
     removed = set(cache.skills.keys()) - set(current_skills.keys())
+    for sid in removed:
+        del cache.skills[sid]
+
+    if removed:
+        stale_edges = [
+            ek for ek in cache.edges
+            if any(part in removed for part in ek.split("|"))
+        ]
+        for ek in stale_edges:
+            del cache.edges[ek]
+        logger.info("Pruned %d removed skills and %d stale edges from cache", len(removed), len(stale_edges))
+
     return changed | removed

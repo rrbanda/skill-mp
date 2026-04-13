@@ -55,6 +55,17 @@ from skill_builder.vector_search import SkillVectorSearch
 
 logger = logging.getLogger(__name__)
 
+def _conf(config: Configuration) -> tuple[float, int, int, int]:
+    """Read graph tuning params from config, falling back to defaults."""
+    return (
+        config.graph_confidence_threshold,
+        config.graph_candidate_top_k,
+        config.graph_batch_size,
+        config.graph_max_concurrent_llm,
+    )
+
+
+# Module-level defaults (used when config is not available)
 CONFIDENCE_THRESHOLD = 0.6
 CANDIDATE_TOP_K = 15
 BATCH_SIZE = 10
@@ -83,19 +94,39 @@ class PipelineProgress:
 # ADK runner helper
 # ---------------------------------------------------------------------------
 
+_LLM_TIMEOUT_SECONDS = 120
+
+_runner_cache: dict[str, InMemoryRunner] = {}
+
+
+def _get_runner(agent) -> InMemoryRunner:
+    """Return a cached InMemoryRunner for the given agent, creating one if needed.
+
+    Keyed by agent name so each agent type (entity-extractor, relationship-
+    classifier, etc.) shares a single runner instance.  Each call still
+    creates a fresh session so state is never leaked between invocations.
+    """
+    key = agent.name
+    if key not in _runner_cache:
+        _runner_cache[key] = InMemoryRunner(agent=agent, app_name=GRAPH_APP_NAME)
+    return _runner_cache[key]
+
+
 async def _run_agent_once(
     agent,
     user_prompt: str,
     output_key: str,
+    timeout: float = _LLM_TIMEOUT_SECONDS,
 ) -> str:
     """Run a single ADK agent with a user prompt and return its output text.
 
-    Creates a fresh InMemoryRunner and session for each call so agents
-    are stateless across pipeline invocations.
+    Reuses an InMemoryRunner per agent type but creates a fresh session
+    per call so agents are stateless.  Raises TimeoutError if the agent
+    does not complete within ``timeout`` seconds.
     """
-    runner = InMemoryRunner(agent=agent, app_name=GRAPH_APP_NAME)
+    runner = _get_runner(agent)
     initial_state = get_graph_initial_state()
-    user_id = f"graph-pipeline-{id(agent)}"
+    user_id = f"graph-pipeline-{id(agent)}-{time.monotonic_ns()}"
 
     session = await runner.session_service.create_session(
         app_name=GRAPH_APP_NAME, user_id=user_id, state=initial_state
@@ -105,12 +136,15 @@ async def _run_agent_once(
         role="user", parts=[types.Part(text=user_prompt)]
     )
 
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session.id,
-        new_message=content,
-    ):
-        pass  # consume all events
+    async def _consume():
+        async for _event in runner.run_async(
+            user_id=user_id,
+            session_id=session.id,
+            new_message=content,
+        ):
+            pass
+
+    await asyncio.wait_for(_consume(), timeout=timeout)
 
     session = await runner.session_service.get_session(
         app_name=GRAPH_APP_NAME,
@@ -177,8 +211,9 @@ async def phase1_extract_entities(
         progress=0.0,
     )
 
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
-    batches = [to_extract[i:i + BATCH_SIZE] for i in range(0, total, BATCH_SIZE)]
+    conf_threshold, candidate_top_k, batch_size, max_concurrent = _conf(config)
+    semaphore = asyncio.Semaphore(max_concurrent)
+    batches = [to_extract[i:i + batch_size] for i in range(0, total, batch_size)]
     completed = 0
 
     for batch in batches:
@@ -245,8 +280,11 @@ async def phase2_classify_relationships(
         progress=0.0,
     )
 
+    conf_threshold, candidate_top_k, _, _ = _conf(config)
     skill_map = {s.skill_id: s for s in skills}
-    candidate_pairs = _find_candidate_pairs(skills, cache, vs, skill_map)
+    candidate_pairs = await asyncio.to_thread(
+        _find_candidate_pairs, skills, cache, vs, skill_map, candidate_top_k
+    )
 
     pairs_to_classify = [
         pair for pair in candidate_pairs
@@ -269,11 +307,12 @@ async def phase2_classify_relationships(
         )
         return
 
+    conf_threshold, _, batch_size, max_concurrent = _conf(config)
     batches = [
-        pairs_to_classify[i:i + BATCH_SIZE]
-        for i in range(0, len(pairs_to_classify), BATCH_SIZE)
+        pairs_to_classify[i:i + batch_size]
+        for i in range(0, len(pairs_to_classify), batch_size)
     ]
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
+    semaphore = asyncio.Semaphore(max_concurrent)
     completed = 0
 
     for batch in batches:
@@ -294,7 +333,7 @@ async def phase2_classify_relationships(
             for rel in result.relationships:
                 if rel.relationship == RelationshipType.NONE:
                     continue
-                if rel.confidence < CONFIDENCE_THRESHOLD:
+                if rel.confidence < conf_threshold:
                     continue
                 ek = edge_key(rel.skill_a_id, rel.skill_b_id)
                 cache.edges[ek] = CachedEdge(
@@ -326,20 +365,29 @@ def _find_candidate_pairs(
     cache: GraphCache,
     vs: SkillVectorSearch,
     skill_map: dict[str, SkillData],
+    top_k: int = CANDIDATE_TOP_K,
 ) -> list[tuple[str, str]]:
-    """Return unique candidate pairs from embedding similarity + shared entities."""
+    """Return unique candidate pairs from embedding similarity + shared entities.
+
+    Uses batch embedding (single model.encode call) + in-memory cosine similarity
+    instead of N separate Neo4j vector queries.
+    """
+    import numpy as np
+
     candidate_set: set[tuple[str, str]] = set()
 
-    for skill in skills:
-        try:
-            results = vs.search(
-                f"{skill.name}: {skill.description}", top_k=CANDIDATE_TOP_K
-            )
-            for r in results:
-                if r.id != skill.skill_id and r.id in skill_map:
-                    candidate_set.add(tuple(sorted([skill.skill_id, r.id])))
-        except Exception as exc:
-            logger.warning("Vector search failed for %s: %s", skill.skill_id, exc)
+    try:
+        texts = [f"{s.name}: {s.description}" for s in skills]
+        embeddings = vs.batch_encode(texts)
+        sim_matrix = np.dot(embeddings, embeddings.T)
+
+        for i, skill in enumerate(skills):
+            top_indices = np.argsort(sim_matrix[i])[::-1][1:top_k + 1]
+            for j_idx in top_indices:
+                j = int(j_idx)
+                candidate_set.add(tuple(sorted([skill.skill_id, skills[j].skill_id])))
+    except Exception as exc:
+        logger.warning("Batch similarity search failed: %s", exc)
 
     entity_index: dict[str, set[str]] = {}
     for sid, cached in cache.skills.items():
@@ -353,13 +401,19 @@ def _find_candidate_pairs(
         for term in all_terms:
             entity_index.setdefault(term, set()).add(sid)
 
+    MAX_PAIRS_PER_TERM = 50
     for sids in entity_index.values():
         sid_list = [s for s in sids if s in skill_map]
+        if len(sid_list) > MAX_PAIRS_PER_TERM:
+            sid_list = sid_list[:MAX_PAIRS_PER_TERM]
         for i in range(len(sid_list)):
             for j in range(i + 1, len(sid_list)):
                 candidate_set.add(tuple(sorted([sid_list[i], sid_list[j]])))
 
     return list(candidate_set)
+
+
+_BODY_PREVIEW_CHARS = 500
 
 
 def _build_pair_prompts(
@@ -384,14 +438,14 @@ def _build_pair_prompts(
             f"  Technologies: {ea.get('technologies', [])}\n"
             f"  Patterns: {ea.get('patterns', [])}\n"
             f"  Domain: {ea.get('domain', '')}\n"
-            f"  Body preview: {sa.body[:500]}\n\n"
+            f"  Body preview: {sa.body[:_BODY_PREVIEW_CHARS]}\n\n"
             f"Skill B ID: {b_id}\n"
             f"  Name: {sb.name}\n"
             f"  Description: {sb.description}\n"
             f"  Technologies: {eb.get('technologies', [])}\n"
             f"  Patterns: {eb.get('patterns', [])}\n"
             f"  Domain: {eb.get('domain', '')}\n"
-            f"  Body preview: {sb.body[:500]}\n"
+            f"  Body preview: {sb.body[:_BODY_PREVIEW_CHARS]}\n"
         )
     return parts
 
@@ -419,7 +473,7 @@ async def phase3_communities(
         if len(parts) == 2:
             edges.append((parts[0], parts[1], ce.confidence))
 
-    assignment = detect_communities(nodes, edges)
+    assignment = await asyncio.to_thread(detect_communities, nodes, edges)
 
     yield PipelineProgress(
         phase="community_detection", step="detected",
@@ -513,7 +567,11 @@ async def phase4_validate(
     skills: list[SkillData],
     cache: GraphCache,
 ) -> AsyncIterator[PipelineProgress]:
-    """Validate graph quality using the GraphValidator ADK agent."""
+    """Validate graph quality using the GraphValidator ADK agent.
+
+    The final PipelineProgress has ``quality_score`` stashed in
+    ``detail`` as ``"score:XX.X|..."`` so the orchestrator can extract it.
+    """
     yield PipelineProgress(
         phase="validation", step="start",
         detail="Validating graph quality",
@@ -540,6 +598,7 @@ async def phase4_validate(
         yield PipelineProgress(
             phase="validation", step="done",
             detail=(
+                f"score:{report.overall_score}|"
                 f"Quality score: {report.overall_score:.0f}/100 — "
                 f"{len(report.issues)} issues, {len(report.recommendations)} recommendations"
             ),
@@ -552,6 +611,11 @@ async def phase4_validate(
             detail=f"Validation completed with errors: {exc}",
             progress=1.0,
         )
+
+
+_LOW_CONFIDENCE_THRESHOLD = 0.8
+_MAX_EDGE_SAMPLES = 20
+_MAX_ISOLATED_DISPLAY = 10
 
 
 def _build_validation_prompt(
@@ -577,9 +641,9 @@ def _build_validation_prompt(
             connected_ids.add(b_id)
         edges_by_type[ce.relationship] = edges_by_type.get(ce.relationship, 0) + 1
         total_confidence += ce.confidence
-        if ce.confidence < 0.8:
+        if ce.confidence < _LOW_CONFIDENCE_THRESHOLD:
             low_confidence += 1
-        if len(edge_samples) < 20:
+        if len(edge_samples) < _MAX_EDGE_SAMPLES:
             edge_samples.append(
                 f"  {a_id} --[{ce.relationship} conf={ce.confidence:.2f}]--> {b_id}: {ce.description}"
             )
@@ -597,10 +661,10 @@ def _build_validation_prompt(
         f"Graph Statistics:\n"
         f"  Total nodes: {len(skill_ids)}\n"
         f"  Total edges: {total_edges}\n"
-        f"  Isolated nodes: {len(isolated)} — {isolated[:10]}\n"
+        f"  Isolated nodes: {len(isolated)} — {isolated[:_MAX_ISOLATED_DISPLAY]}\n"
         f"  Communities detected: {communities_count}\n"
         f"  Average confidence: {avg_conf:.3f}\n"
-        f"  Low confidence edges (< 0.8): {low_confidence}\n"
+        f"  Low confidence edges (< {_LOW_CONFIDENCE_THRESHOLD}): {low_confidence}\n"
         f"  Edges by type: {json.dumps(edges_by_type)}\n\n"
         f"Sample edges:\n" + "\n".join(edge_samples)
     )

@@ -17,7 +17,6 @@ import logging
 import pathlib
 
 from google.adk.agents import LlmAgent
-from google.adk.models.lite_llm import LiteLlm
 
 from skill_builder.configuration import Configuration
 
@@ -47,14 +46,6 @@ def _load_skill(name: str) -> str:
     return ""
 
 
-def _build_model(config: Configuration) -> LiteLlm:
-    return LiteLlm(
-        model=config.llm_model,
-        api_base=config.llm_api_base,
-        api_key=config.llm_api_key,
-    )
-
-
 def get_graph_initial_state() -> dict[str, str]:
     """Load all GraphRAG SKILL.md files into session state.
 
@@ -73,7 +64,7 @@ def build_entity_extractor(config: Configuration) -> LlmAgent:
     """Phase 1 agent: extracts entities from a single SKILL.md."""
     return LlmAgent(
         name="EntityExtractorAgent",
-        model=_build_model(config),
+        model=config.build_model(),
         instruction=(
             "You are a Knowledge Graph Entity Extractor.\n\n"
             "Follow the methodology and rules in this skill:\n\n"
@@ -90,7 +81,7 @@ def build_relationship_classifier(config: Configuration) -> LlmAgent:
     """Phase 2 agent: classifies relationships between skill pairs."""
     return LlmAgent(
         name="RelationshipClassifierAgent",
-        model=_build_model(config),
+        model=config.build_model(),
         instruction=(
             "You are a Knowledge Graph Relationship Classifier.\n\n"
             "Follow the methodology, relationship definitions, and confidence rules in this skill:\n\n"
@@ -107,7 +98,7 @@ def build_community_summarizer(config: Configuration) -> LlmAgent:
     """Phase 3 agent: summarizes detected communities."""
     return LlmAgent(
         name="CommunitySummarizerAgent",
-        model=_build_model(config),
+        model=config.build_model(),
         instruction=(
             "You are a Knowledge Graph Community Summarizer.\n\n"
             "Follow the methodology and coherence scoring rules in this skill:\n\n"
@@ -124,7 +115,7 @@ def build_graph_validator(config: Configuration) -> LlmAgent:
     """Phase 4 agent: validates graph quality as LLM-as-Judge."""
     return LlmAgent(
         name="GraphValidatorAgent",
-        model=_build_model(config),
+        model=config.build_model(),
         instruction=(
             "You are a Knowledge Graph Quality Validator (LLM-as-Judge).\n\n"
             "Follow the evaluation dimensions and scoring guide in this skill:\n\n"

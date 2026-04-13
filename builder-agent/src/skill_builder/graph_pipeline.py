@@ -94,14 +94,14 @@ async def run_graph_pipeline(
         phase="init", step="scan", detail="Scanning registry", progress=0.0
     )
 
-    skills = scan_registry(reg_dir)
+    skills = await asyncio.to_thread(scan_registry, reg_dir)
     if not skills:
         result.errors.append("No skills found in registry")
         result.duration_ms = int((time.time() - start) * 1000)
         yield result
         return
 
-    cache = load_cache(c_path)
+    cache = await asyncio.to_thread(load_cache, c_path)
     cache.model = config.llm_model
 
     current_content = {s.skill_id: s.raw_content for s in skills}
@@ -157,7 +157,7 @@ async def run_graph_pipeline(
         result.errors.append(f"Neo4j write: {exc}")
 
     try:
-        save_cache(cache, c_path)
+        await asyncio.to_thread(save_cache, cache, c_path)
     except Exception as exc:
         logger.warning("Cache save failed: %s", exc)
 
@@ -165,6 +165,13 @@ async def run_graph_pipeline(
     if not skip_validation:
         try:
             async for progress in phase4_validate(config, skills, cache):
+                if progress.detail.startswith("score:"):
+                    try:
+                        score_str = progress.detail.split("|", 1)[0].split(":", 1)[1]
+                        result.quality_score = float(score_str)
+                        progress.detail = progress.detail.split("|", 1)[1]
+                    except (IndexError, ValueError) as exc:
+                        logger.warning("Failed to parse quality score from detail: %s", exc)
                 yield progress
             result.phases_completed.append("validation")
         except Exception as exc:
@@ -203,7 +210,7 @@ async def run_incremental_update(
     start = time.time()
     result = PipelineResult()
 
-    cache = load_cache(c_path)
+    cache = await asyncio.to_thread(load_cache, c_path)
     cache.model = config.llm_model
 
     body = extract_body(skill_content)[:3000]
@@ -224,7 +231,7 @@ async def run_incremental_update(
     result.phases_completed.append("entity_extraction")
 
     # Phase 2 for new skill against all existing
-    all_skills = scan_registry(reg_dir)
+    all_skills = await asyncio.to_thread(scan_registry, reg_dir)
     if not any(s.skill_id == skill_id for s in all_skills):
         all_skills.append(new_skill)
 
@@ -241,10 +248,11 @@ async def run_incremental_update(
         result.edges = edges
         result.communities = communities
     except Exception as exc:
+        logger.exception("Incremental Neo4j write failed")
         result.errors.append(str(exc))
 
     try:
-        save_cache(cache, c_path)
+        await asyncio.to_thread(save_cache, cache, c_path)
     except Exception as exc:
         logger.warning("Cache save failed: %s", exc)
 

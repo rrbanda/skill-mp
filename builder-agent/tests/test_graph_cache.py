@@ -19,3 +19,19 @@ def test_edge_key_order_independent():
 
 def test_edge_key_different_for_different_pairs():
     assert edge_key("a", "b") != edge_key("a", "c")
+
+
+def test_get_changed_skills_prunes_removed():
+    from skill_builder.graph_cache import GraphCache, CachedSkill, CachedEdge, get_changed_skills
+    cache = GraphCache()
+    cache.skills["a"] = CachedSkill(content_hash="hash_a", entities={})
+    cache.skills["b"] = CachedSkill(content_hash="hash_b", entities={})
+    cache.edges["a|b"] = CachedEdge(
+        relationship="DEPENDS_ON", confidence=0.9,
+        direction="A_TO_B", description="test"
+    )
+    current = {"b": "new_content_b"}
+    changed = get_changed_skills(cache, current)
+    assert "a" in changed
+    assert "a" not in cache.skills
+    assert "a|b" not in cache.edges

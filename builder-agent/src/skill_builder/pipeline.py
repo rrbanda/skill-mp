@@ -15,7 +15,6 @@ import logging
 import pathlib
 
 from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent
-from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import FunctionTool
 
@@ -29,7 +28,6 @@ APP_NAME = "skill_builder"
 
 KEY_REQUIREMENTS = "requirements_analysis"
 KEY_RESEARCH = "research_report"
-KEY_EXEMPLARS = "exemplar_content"
 KEY_GENERATED_SKILL = "generated_skill"
 KEY_VALIDATION = "validation_result"
 
@@ -47,14 +45,6 @@ def _load_skill_content() -> dict[str, str]:
         if path.exists():
             result[name] = path.read_text()
     return result
-
-
-def _build_model(config: Configuration) -> LiteLlm:
-    return LiteLlm(
-        model=config.llm_model,
-        api_base=config.llm_api_base,
-        api_key=config.llm_api_key,
-    )
 
 
 def get_initial_state() -> dict[str, str]:
@@ -91,7 +81,7 @@ def build_pipeline(
     if vector_search is None:
         vector_search = SkillVectorSearch(config)
 
-    model = _build_model(config)
+    model = config.build_model()
     default_top_k = config.vector_search_top_k
 
     def search_similar_skills(query: str, top_k: int = default_top_k) -> str:

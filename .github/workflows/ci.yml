@@ -59,6 +59,26 @@ jobs:
       - run: pnpm test
         working-directory: ui
 
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: ui
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: ui
+      - run: pnpm test:e2e
+        working-directory: ui
+
   test-python:
     name: Test Python
     runs-on: ubuntu-latest
@@ -67,7 +87,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --extra dev
         working-directory: builder-agent
-      - run: uv run pytest -v
+      - run: uv run pytest -v --cov-report=xml
         working-directory: builder-agent
 
   build-check:

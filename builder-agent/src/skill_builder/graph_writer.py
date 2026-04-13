@@ -25,6 +25,20 @@ _ALL_RELATIONSHIP_TYPES = [
 ]
 
 
+_driver_cache: dict[str, neo4j.Driver] = {}
+
+
+def _get_driver(config: Configuration) -> neo4j.Driver:
+    """Return a shared Neo4j driver for the given config URI, creating one if needed."""
+    key = config.neo4j_uri
+    if key not in _driver_cache:
+        _driver_cache[key] = neo4j.GraphDatabase.driver(
+            config.neo4j_uri,
+            auth=(config.neo4j_user, config.neo4j_password),
+        )
+    return _driver_cache[key]
+
+
 def write_graph_to_neo4j(
     config: Configuration,
     skills: list[SkillData],
@@ -34,23 +48,17 @@ def write_graph_to_neo4j(
 
     Returns ``(node_count, edge_count, community_count)``.
     """
-    driver = neo4j.GraphDatabase.driver(
-        config.neo4j_uri,
-        auth=(config.neo4j_user, config.neo4j_password),
-    )
+    driver = _get_driver(config)
 
-    try:
-        with driver.session(database=config.neo4j_database) as session:
-            _ensure_constraints(session)
-            _upsert_skills(session, skills, cache)
-            _clear_relationships(session)
-            edge_count = _write_edges(session, skills, cache)
-            community_count = _write_communities(session, skills, cache)
-            _clean_stale(session, skills)
+    with driver.session(database=config.neo4j_database) as session:
+        _ensure_constraints(session)
+        _upsert_skills(session, skills, cache)
+        _clear_relationships(session)
+        edge_count = _write_edges(session, skills, cache)
+        community_count = _write_communities(session, skills, cache)
+        _clean_stale(session, skills)
 
-        return len(skills), edge_count, community_count
-    finally:
-        driver.close()
+    return len(skills), edge_count, community_count
 
 
 def _ensure_constraints(session: neo4j.Session) -> None:
@@ -126,8 +134,13 @@ def _write_edges(
             "direction": ce.direction,
         })
 
+    _ALLOWED_REL_TYPES = set(_ALL_RELATIONSHIP_TYPES)
+
     edge_count = 0
     for rel_type, params in edge_params_by_type.items():
+        if rel_type not in _ALLOWED_REL_TYPES:
+            logger.warning("Skipping unknown relationship type from LLM: %r", rel_type)
+            continue
         for batch_start in range(0, len(params), 100):
             batch = params[batch_start:batch_start + 100]
             session.run(
@@ -166,6 +179,11 @@ def _write_communities(
         if not k.startswith("_") and isinstance(v, dict)
     }
     for comm_id_str, summary in comm_summaries.items():
+        try:
+            comm_id_int = int(comm_id_str)
+        except (ValueError, TypeError):
+            logger.warning("Skipping community with non-numeric ID: %r", comm_id_str)
+            continue
         session.run(
             """
             MERGE (c:Community {communityId: $id})
@@ -177,7 +195,7 @@ def _write_communities(
                 c.updatedAt = datetime()
             """,
             {
-                "id": int(comm_id_str),
+                "id": comm_id_int,
                 "name": summary.get("name", f"Community {comm_id_str}"),
                 "description": summary.get("description", ""),
                 "techs": summary.get("key_technologies", []),

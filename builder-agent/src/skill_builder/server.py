@@ -37,11 +37,33 @@ from skill_builder.graph_pipeline import (
     run_graph_pipeline,
     run_incremental_update,
 )
-from skill_builder.observability import get_tracer, init_tracing
+from skill_builder.observability import get_tracer, init_tracing, shutdown_tracing
 from skill_builder.pipeline import APP_NAME, KEY_GENERATED_SKILL, KEY_VALIDATION, get_initial_state, get_runner
 from skill_builder.vector_search import SkillVectorSearch
 
 logger = logging.getLogger(__name__)
+
+_rate_limit_store: dict[str, list[float]] = {}
+
+
+def _check_rate_limit(request: Request) -> JSONResponse | None:
+    """Simple in-process rate limiter per client IP."""
+    config = _get_config()
+    limit = config.rate_limit_per_minute
+    if limit <= 0:
+        return None
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window = _rate_limit_store.setdefault(ip, [])
+    # Prune entries older than 60s
+    _rate_limit_store[ip] = window = [t for t in window if now - t < 60]
+    if len(window) >= limit:
+        return JSONResponse(
+            {"error": "Rate limit exceeded. Try again later."},
+            status_code=429,
+        )
+    window.append(now)
+    return None
 
 
 class _SessionEntry:
@@ -60,6 +82,15 @@ _runner = None
 _vector_search: SkillVectorSearch | None = None
 _git_publisher: GitPublisher | None = None
 _sessions: dict[str, _SessionEntry] = {}
+_sessions_lock: asyncio.Lock | None = None
+
+
+def _get_sessions_lock() -> asyncio.Lock:
+    """Lazily create the sessions lock (must be created inside a running loop)."""
+    global _sessions_lock
+    if _sessions_lock is None:
+        _sessions_lock = asyncio.Lock()
+    return _sessions_lock
 
 
 def _get_config() -> Configuration:
@@ -142,15 +173,16 @@ async def _run_pipeline(
     runner = _get_runner()
     config = _get_config()
 
-    if context_id not in _sessions:
-        initial_state = get_initial_state()
-        session = await runner.session_service.create_session(
-            app_name=APP_NAME, user_id=context_id, state=initial_state
-        )
-        _sessions[context_id] = _SessionEntry(session.id)
-    entry = _sessions[context_id]
-    entry.touch()
-    session_id = entry.session_id
+    async with _get_sessions_lock():
+        if context_id not in _sessions:
+            initial_state = get_initial_state()
+            session = await runner.session_service.create_session(
+                app_name=APP_NAME, user_id=context_id, state=initial_state
+            )
+            _sessions[context_id] = _SessionEntry(session.id)
+        entry = _sessions[context_id]
+        entry.touch()
+        session_id = entry.session_id
 
     content = types.Content(role="user", parts=[types.Part(text=user_input)])
 
@@ -231,6 +263,10 @@ async def generate(request: Request) -> EventSourceResponse | JSONResponse:
     if auth_error:
         return auth_error
 
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
+
     body = await request.json()
     description = body.get("description", "").strip()
     if not description:
@@ -260,6 +296,12 @@ async def refine(request: Request) -> EventSourceResponse | JSONResponse:
     auth_error = _check_api_key(request)
     if auth_error:
         return auth_error
+
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
+
+    _evict_expired_sessions()
 
     body = await request.json()
     feedback = body.get("feedback", "").strip()
@@ -295,6 +337,10 @@ async def save(request: Request) -> JSONResponse:
     auth_error = _check_api_key(request)
     if auth_error:
         return auth_error
+
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
 
     body = await request.json()
     skill_content = body.get("skill_content", "").strip()
@@ -404,8 +450,7 @@ async def health(request: Request) -> JSONResponse:
 
     try:
         vs = _get_vector_search()
-        with vs._driver.session(database=config.neo4j_database) as session:
-            session.run("RETURN 1")
+        await asyncio.to_thread(vs.check_connectivity)
         result["neo4j"] = "connected"
     except Exception as exc:
         result["neo4j"] = f"error: {_sanitize_error(exc)}"
@@ -439,6 +484,10 @@ async def embed_all(request: Request) -> JSONResponse:
     if auth_error:
         return auth_error
 
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
+
     vs = _get_vector_search()
     count = vs.embed_all_skills()
     return JSONResponse({"ok": True, "embedded": count})
@@ -450,12 +499,19 @@ async def graph_build(request: Request) -> EventSourceResponse | JSONResponse:
     if auth_error:
         return auth_error
 
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
+
     config = _get_config()
     vs = _get_vector_search()
 
     async def event_stream():
         try:
-            async for event in run_graph_pipeline(config, vs):
+            async for event in run_graph_pipeline(
+                config, vs,
+                cache_path=config.graph_cache_path or None,
+            ):
                 if isinstance(event, PipelineResult):
                     yield {
                         "event": "complete",
@@ -495,6 +551,10 @@ async def graph_update(request: Request) -> JSONResponse:
     if auth_error:
         return auth_error
 
+    rate_error = _check_rate_limit(request)
+    if rate_error:
+        return rate_error
+
     body = await request.json()
     skill_id = body.get("skill_id", "").strip()
     skill_content = body.get("skill_content", "").strip()
@@ -517,6 +577,7 @@ async def graph_update(request: Request) -> JSONResponse:
             skill_content=skill_content,
             plugin=plugin,
             skill_name=skill_name,
+            cache_path=config.graph_cache_path or None,
         )
         return JSONResponse({
             "ok": True,
@@ -601,6 +662,17 @@ async def on_shutdown():
         except Exception as exc:
             logger.warning("Error closing Neo4j driver: %s", exc)
         _vector_search = None
+
+    from skill_builder.graph_writer import _driver_cache
+    for uri, driver in list(_driver_cache.items()):
+        try:
+            driver.close()
+            logger.info("Graph writer Neo4j driver closed for %s", uri)
+        except Exception as exc:
+            logger.warning("Error closing graph writer driver for %s: %s", uri, exc)
+    _driver_cache.clear()
+
+    shutdown_tracing()
 
 
 def create_app() -> Starlette:

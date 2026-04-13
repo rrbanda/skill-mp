@@ -32,25 +32,39 @@ def _generate(args: argparse.Namespace) -> int:
     try:
         with urllib.request.urlopen(req, timeout=args.timeout) as resp:
             skill_content = ""
+            current_event = ""
+            data_buffer = ""
+
             for raw_line in resp:
-                line = raw_line.decode().strip()
-                if line.startswith("data:"):
-                    try:
-                        data = json.loads(line[5:].strip())
-                        if "skill_content" in data:
-                            skill_content = data["skill_content"]
-                        elif data.get("agent"):
-                            agent = data["agent"]
-                            text = data.get("text", "")
-                            if text:
-                                print(f"[{agent}] {text[:120]}...", file=sys.stderr)
-                            else:
-                                print(f"[{agent}] started", file=sys.stderr)
-                        elif "error" in data:
-                            print(f"Error: {data['error']}", file=sys.stderr)
-                            return 1
-                    except json.JSONDecodeError:
-                        pass
+                line = raw_line.decode().rstrip("\n").rstrip("\r")
+
+                if line == "":
+                    if data_buffer:
+                        try:
+                            data = json.loads(data_buffer)
+                            if current_event == "error" or "error" in data:
+                                print(f"Error: {data.get('error', data)}", file=sys.stderr)
+                                return 1
+                            elif "skill_content" in data:
+                                skill_content = data["skill_content"]
+                            elif data.get("agent"):
+                                agent = data["agent"]
+                                text = data.get("text", "")
+                                if text:
+                                    print(f"[{agent}] {text[:120]}...", file=sys.stderr)
+                                else:
+                                    print(f"[{agent}] started", file=sys.stderr)
+                        except json.JSONDecodeError:
+                            pass
+                    current_event = ""
+                    data_buffer = ""
+                    continue
+
+                if line.startswith("event:"):
+                    current_event = line[6:].strip()
+                elif line.startswith("data:"):
+                    payload = line[5:].strip()
+                    data_buffer = payload if not data_buffer else data_buffer + payload
 
             if not skill_content:
                 print("No skill content generated", file=sys.stderr)
