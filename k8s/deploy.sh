@@ -32,6 +32,16 @@ echo ">>> Creating namespace"
 oc apply -f "$SCRIPT_DIR/namespace.yaml"
 oc project skills-marketplace
 
+echo ">>> Applying Secrets"
+if [[ -f "$SCRIPT_DIR/secrets.yaml" ]]; then
+  oc apply -f "$SCRIPT_DIR/secrets.yaml"
+else
+  echo "WARNING: k8s/secrets.yaml not found."
+  echo "  Copy k8s/secrets.yaml.example to k8s/secrets.yaml and set real values."
+  echo "  Pods will fail to start without the required Secrets."
+  exit 1
+fi
+
 echo ">>> Applying ConfigMap"
 oc apply -f "$SCRIPT_DIR/configmap.yaml"
 
