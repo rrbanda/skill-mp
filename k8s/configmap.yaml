@@ -42,6 +42,7 @@ metadata:
 data:
   GRAPH_BACKEND: "neo4j"
   BUILDER_AGENT_URL: "http://builder-agent:8001"
+  A2A_AGENT_URLS: "http://builder-agent:8000"
   NEXT_PUBLIC_SITE_NAME: "Skills Marketplace"
   NEXT_PUBLIC_GITHUB_URL: "https://github.com/rrbanda/skill-mp"
   REGISTRY_DIR: "/app/registry"

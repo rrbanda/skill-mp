@@ -10,6 +10,31 @@ services:
     volumes:
       - neo4j-data:/data
 
+  docsclaw:
+    image: ghcr.io/redhat-et/docsclaw:latest
+    ports:
+      - "8000:8000"
+      - "8100:8100"
+    command:
+      - serve
+      - --config-dir
+      - /config/agent
+      - --listen-plain-http
+      - --log-level
+      - debug
+    environment:
+      LLM_PROVIDER: openai
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-not-needed}
+      LLM_MODEL: ${LLM_MODEL:-gemini/models/gemini-2.5-flash}
+    volumes:
+      - ./k8s/docsclaw-local/system-prompt.txt:/config/agent/system-prompt.txt:ro
+      - ./k8s/docsclaw-local/agent-card.json:/config/agent/agent-card.json:ro
+      - ./k8s/docsclaw-local/agent-config.yaml:/config/agent/agent-config.yaml:ro
+      - ./k8s/docsclaw-local/skills:/config/agent/skills:ro
+    profiles:
+      - a2a
+
   neo4j-test:
     profiles: ["test"]
     image: neo4j:5-community

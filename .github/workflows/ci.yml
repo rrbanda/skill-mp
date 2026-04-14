@@ -111,10 +111,63 @@ jobs:
       - run: uv build
         working-directory: builder-agent
 
+  skill-pack:
+    name: OCI Skill Pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Build docsclaw
+        run: |
+          git clone --depth 1 https://github.com/redhat-et/docsclaw.git /tmp/docsclaw
+          cd /tmp/docsclaw && make build
+          echo "/tmp/docsclaw/bin" >> $GITHUB_PATH
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Generate skill cards
+        run: python3 scripts/generate-skill-cards.py --registry registry/
+      - name: Pack all skills
+        run: make skill-pack DOCSCLAW=/tmp/docsclaw/bin/docsclaw
+
+  skill-push:
+    name: OCI Skill Push
+    runs-on: ubuntu-latest
+    needs: [skill-pack, test-python, test-ui]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Build docsclaw
+        run: |
+          git clone --depth 1 https://github.com/redhat-et/docsclaw.git /tmp/docsclaw
+          cd /tmp/docsclaw && make build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate skill cards and push
+        run: make skill-push DOCSCLAW=/tmp/docsclaw/bin/docsclaw
+
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4

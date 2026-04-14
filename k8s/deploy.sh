@@ -42,8 +42,9 @@ else
   exit 1
 fi
 
-echo ">>> Applying ConfigMap"
+echo ">>> Applying ConfigMaps"
 oc apply -f "$SCRIPT_DIR/configmap.yaml"
+oc apply -f "$SCRIPT_DIR/docsclaw-config.yaml"
 
 echo ">>> Deploying Neo4j"
 oc apply -f "$SCRIPT_DIR/neo4j.yaml"
@@ -58,13 +59,18 @@ oc apply -f "$SCRIPT_DIR/builder-agent.yaml"
 echo ">>> Deploying UI + Route"
 oc apply -f "$SCRIPT_DIR/ui.yaml"
 
+echo ">>> Deploying DocsClaw A2A Route"
+oc apply -f "$SCRIPT_DIR/docsclaw-route.yaml"
+
 echo ">>> Waiting for rollouts..."
 oc rollout status deployment/builder-agent --timeout=120s
 oc rollout status deployment/ui --timeout=120s
 
 ROUTE_HOST=$(oc get route ui -o jsonpath='{.spec.host}' 2>/dev/null || echo "unknown")
+A2A_HOST=$(oc get route docsclaw-a2a -o jsonpath='{.spec.host}' 2>/dev/null || echo "unknown")
 echo ""
 echo "============================================"
 echo " Skills Marketplace deployed!"
-echo " URL: https://$ROUTE_HOST"
+echo " UI:  https://$ROUTE_HOST"
+echo " A2A: https://$A2A_HOST"
 echo "============================================"

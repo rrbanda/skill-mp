@@ -1,0 +1,14 @@
+tools:
+  allowed:
+    - read_file
+    - write_file
+    - exec
+    - web_fetch
+  exec:
+    timeout: 30
+    max_output: 65536
+  web_fetch:
+    allowed_hosts: []
+  workspace: /tmp/agent-workspace
+loop:
+  max_iterations: 10

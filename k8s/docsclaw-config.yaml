@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docsclaw-config
+  namespace: skills-marketplace
+  labels:
+    app: docsclaw-sidecar
+    app.kubernetes.io/part-of: skills-marketplace
+data:
+  system-prompt.txt: |
+    You are a helpful AI assistant that specializes in software engineering
+    best practices. You have access to a curated library of skills covering
+    DevOps, API design, security auditing, documentation, and testing.
+
+    When a user asks for help, identify which skill is most relevant and
+    use it to provide detailed, actionable guidance. If no skill matches,
+    use your general knowledge.
+
+    Always be specific, cite best practices, and provide code examples
+    when appropriate.
+
+  agent-card.json: |
+    {
+      "name": "Skills Marketplace Agent",
+      "description": "An A2A-compatible agent with curated DevOps, API, security, docs, and testing skills from the Skills Marketplace",
+      "provider": {
+        "organization": "Skills Marketplace",
+        "url": "https://github.com/rrbanda/skill-mp"
+      },
+      "version": "1.0.0",
+      "capabilities": {
+        "streaming": true
+      }
+    }
+
+  agent-config.yaml: |
+    tools:
+      allowed:
+        - read_file
+        - write_file
+        - exec
+        - web_fetch
+      exec:
+        timeout: 30
+        max_output: 65536
+      web_fetch:
+        allowed_hosts: []
+      workspace: /tmp/agent-workspace
+    loop:
+      max_iterations: 10

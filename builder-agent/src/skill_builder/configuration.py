@@ -61,6 +61,9 @@ class Configuration(BaseSettings):
     graph_confidence_threshold: float = 0.6
     graph_cache_path: str = ""
 
+    # OCI / DocsClaw
+    oci_registry_prefix: str = "ghcr.io/rrbanda/skill-mp/skills"
+
     # Security
     api_key: str = ""
     rate_limit_per_minute: int = 30

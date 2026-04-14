@@ -15,12 +15,14 @@ import {
   Network,
   Hammer,
   BookOpen,
+  Cpu,
 } from "lucide-react";
 
 const navLinks = [
   { href: "/skills", label: "Browse", icon: LayoutGrid },
   { href: "/graph", label: "Graph", icon: Network },
   { href: "/builder", label: "Builder", icon: Hammer },
+  { href: "/agents", label: "Agents", icon: Cpu },
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 

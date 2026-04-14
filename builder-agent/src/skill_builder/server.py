@@ -20,6 +20,7 @@ import secrets
 import time
 
 import uvicorn
+import yaml
 from google.genai import types
 from sse_starlette.sse import EventSourceResponse
 from starlette.applications import Starlette
@@ -379,6 +380,16 @@ async def save(request: Request) -> JSONResponse:
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file.write_text(skill_content)
 
+    description = _extract_frontmatter_field(skill_content, "description")
+    version = _extract_frontmatter_field(skill_content, "version") or "1.0.0"
+    skill_card_info: dict = {"generated": False}
+    try:
+        card_path = _generate_skill_card(skill_dir, plugin, skill_name, description, version)
+        skill_card_info = {"generated": True, "path": str(card_path.relative_to(registry_dir))}
+    except Exception as exc:
+        logger.warning("skill.yaml generation failed: %s", exc)
+        skill_card_info["error"] = _sanitize_error(exc)
+
     mp_file = _update_marketplace_json(registry_dir, plugin)
 
     git_info: dict = {"committed": False, "pushed": False}
@@ -405,7 +416,6 @@ async def save(request: Request) -> JSONResponse:
 
     embed_info: dict = {"embedded": False}
     try:
-        description = _extract_frontmatter_field(skill_content, "description")
         label = skill_name.replace("-", " ").title()
         skill_id = f"{plugin}-{skill_name}"
 
@@ -430,6 +440,7 @@ async def save(request: Request) -> JSONResponse:
             "file": str(skill_file.relative_to(registry_dir)),
             "git": git_info,
             "embedding": embed_info,
+            "skill_card": skill_card_info,
         }
     )
 
@@ -711,6 +722,42 @@ def create_app() -> Starlette:
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
     )
+
+
+def _generate_skill_card(
+    skill_dir: pathlib.Path,
+    plugin: str,
+    skill_name: str,
+    description: str,
+    version: str = "1.0.0",
+) -> pathlib.Path:
+    """Generate a docsclaw-compatible skill.yaml card alongside SKILL.md."""
+    config = _get_config()
+    card_name = f"{plugin}-{skill_name}"
+    card = {
+        "apiVersion": "docsclaw.io/v1alpha1",
+        "kind": "SkillCard",
+        "metadata": {
+            "name": card_name,
+            "namespace": plugin,
+            "ref": f"{config.oci_registry_prefix}/{card_name}",
+            "version": version,
+            "description": description[:1024] if description else skill_name,
+            "author": "Skills Marketplace",
+            "license": "Apache-2.0",
+        },
+        "spec": {
+            "tools": {
+                "required": ["read_file"],
+                "optional": ["exec", "web_fetch", "write_file"],
+            },
+            "dependencies": {"skills": [], "toolPacks": []},
+        },
+    }
+    card_path = skill_dir / "skill.yaml"
+    with open(card_path, "w") as f:
+        yaml.dump(card, f, default_flow_style=False, sort_keys=False)
+    return card_path
 
 
 def run():
