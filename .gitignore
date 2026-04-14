@@ -36,3 +36,8 @@ neo4j_data/
 __pycache__/
 *.pyc
 .venv/
+.coverage
+
+# DocsClaw
+k8s/docsclaw-local/skills/
+registry/**/oci-layout/

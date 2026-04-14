@@ -13,6 +13,9 @@ spec:
     - name: http
       port: 8001
       targetPort: 8001
+    - name: a2a
+      port: 8000
+      targetPort: 8000
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -36,9 +39,39 @@ spec:
         - name: registry
           persistentVolumeClaim:
             claimName: registry-data
+        - name: docsclaw-config
+          configMap:
+            name: docsclaw-config
+        - name: docsclaw-skills
+          emptyDir: {}
+        - name: agent-workspace
+          emptyDir: {}
+      initContainers:
+        - name: flatten-skills
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              for plugin_dir in /registry/*/; do
+                plugin=$(basename "$plugin_dir")
+                for skill_dir in "$plugin_dir"*/; do
+                  if [ -f "$skill_dir/SKILL.md" ]; then
+                    skill=$(basename "$skill_dir")
+                    dest="/skills/${plugin}-${skill}"
+                    mkdir -p "$dest"
+                    cp "$skill_dir/SKILL.md" "$dest/"
+                    [ -f "$skill_dir/skill.yaml" ] && cp "$skill_dir/skill.yaml" "$dest/"
+                  fi
+                done
+              done
+          volumeMounts:
+            - name: registry
+              mountPath: /registry
+              readOnly: true
+            - name: docsclaw-skills
+              mountPath: /skills
       containers:
         - name: builder-agent
-          # Override via: kubectl set image deployment/builder-agent builder-agent=YOUR_IMAGE
           image: ghcr.io/rrbanda/skill-mp/agent:latest
           imagePullPolicy: Always
           ports:
@@ -74,6 +107,73 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "4"
+        - name: docsclaw
+          image: ghcr.io/redhat-et/docsclaw:latest
+          imagePullPolicy: Always
+          args:
+            - serve
+            - --config-dir
+            - /config/agent
+            - --listen-plain-http
+          ports:
+            - containerPort: 8000
+              name: a2a
+            - containerPort: 8100
+              name: health
+          volumeMounts:
+            - name: docsclaw-config
+              mountPath: /config/agent/system-prompt.txt
+              subPath: system-prompt.txt
+            - name: docsclaw-config
+              mountPath: /config/agent/agent-card.json
+              subPath: agent-card.json
+            - name: docsclaw-config
+              mountPath: /config/agent/agent-config.yaml
+              subPath: agent-config.yaml
+            - name: docsclaw-skills
+              mountPath: /config/agent/skills
+              readOnly: true
+            - name: agent-workspace
+              mountPath: /tmp/agent-workspace
+          env:
+            - name: LLM_PROVIDER
+              value: openai
+            - name: LLM_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: builder-agent-config
+                  key: LLM_API_BASE
+            - name: LLM_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: builder-agent-config
+                  key: LLM_MODEL
+                  optional: true
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: builder-agent-secrets
+                  key: LLM_API_KEY
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8100
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

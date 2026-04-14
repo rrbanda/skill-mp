@@ -1,0 +1,12 @@
+{
+  "name": "Skills Marketplace Agent",
+  "description": "An A2A-compatible agent with curated DevOps, API, security, docs, and testing skills from the Skills Marketplace",
+  "provider": {
+    "organization": "Skills Marketplace",
+    "url": "https://github.com/rrbanda/skill-mp"
+  },
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": true
+  }
+}

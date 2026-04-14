@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: docsclaw-a2a
+  namespace: skills-marketplace
+  labels:
+    app: builder-agent
+    app.kubernetes.io/part-of: skills-marketplace
+  annotations:
+    haproxy.router.openshift.io/timeout: 120s
+spec:
+  to:
+    kind: Service
+    name: builder-agent
+    weight: 100
+  port:
+    targetPort: a2a
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
